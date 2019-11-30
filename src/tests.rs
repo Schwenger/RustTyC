@@ -95,11 +95,26 @@ fn create_different_types() {
 }
 
 #[test]
-fn simple() {
+fn bound_by_concrete_transitive() {
     let mut tc: TypeChecker<Key> = TypeChecker::new();
     let first = tc.new_key();
     let second = tc.new_key();
     tc.impose(second.bound_by_concrete(ConcreteType::Int128));
     tc.impose(first.more_concrete_than(second));
-    dbg!(tc.get_state());
+    assert_eq!(tc.get_type(first), tc.get_type(second));
+}
+
+#[test]
+fn bound_then_refine() {
+    let mut tc: TypeChecker<Key> = TypeChecker::new();
+    let a = tc.new_key();
+    let b = tc.new_key();
+    let first_bound = AbstractType::Integer(3);
+    let second_bound = AbstractType::Integer(8);
+    tc.impose(b.bound_by_abstract(first_bound));
+    tc.impose(a.more_concrete_than(b));
+    tc.impose(b.bound_by_abstract(second_bound));
+    assert_ne!(tc.get_type(a), tc.get_type(b));
+    assert_eq!(tc.get_type(a), first_bound);
+    assert_eq!(tc.get_type(b), second_bound);
 }

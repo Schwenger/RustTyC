@@ -113,6 +113,11 @@ where
             BoundByValue { target, bound } => {
                 let _ = self.store.unify_var_value(target.0, bound);
             }
+            MoreConcreteThanType { target, args } => {
+                args.into_iter().for_each(|bound| {
+                    let _ = self.store.unify_var_value(target.0, bound);
+                });
+            }
         }
     }
 

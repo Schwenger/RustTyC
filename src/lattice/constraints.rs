@@ -7,6 +7,7 @@ where
     Key::Value: AbstractType,
 {
     MoreConcreteThanAll { target: TypeCheckKey<Key>, args: Vec<TypeCheckKey<Key>> },
+    MoreConcreteThanType { target: TypeCheckKey<Key>, args: Vec<Key::Value> },
     BoundByValue { target: TypeCheckKey<Key>, bound: Key::Value },
 }
 
@@ -17,15 +18,20 @@ where
     /// States that the left operand needs to be at least as concrete as the right one.
     /// Imposing this constraints let the abstract type of `self` become be the meet of the current
     /// abstract type of `self` and `other`.
-    pub fn more_concrete_than(&self, other: Self) -> TypeConstraint<Key> {
-        TypeConstraint::MoreConcreteThanAll { target: *self, args: vec![other] }
+    pub fn more_concrete_than(self, other: Self) -> TypeConstraint<Key> {
+        TypeConstraint::MoreConcreteThanAll { target: self, args: vec![other] }
     }
 
     /// States that `target` needs to be more concrete than all `args` combined.
     /// Imposing this constraint computes the meet of all args and enforces that `self` is more
     /// concrete than the result.
-    pub fn is_the_meet_of(&self, args: &[Self]) -> TypeConstraint<Key> {
-        TypeConstraint::MoreConcreteThanAll { target: *self, args: args.to_vec() }
+    pub fn is_the_meet_of(self, args: &[Self]) -> TypeConstraint<Key> {
+        TypeConstraint::MoreConcreteThanAll { target: self, args: args.to_vec() }
+    }
+
+    /// Bounds `self` by `other` where `other` is an abstract type.
+    pub fn bound_by_abstract(self, other: Key::Value) -> TypeConstraint<Key> {
+        TypeConstraint::MoreConcreteThanType { target: self, args: vec![other] }
     }
 }
 
