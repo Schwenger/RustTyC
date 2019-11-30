@@ -1,5 +1,6 @@
 use crate::lattice::constraints::TypeConstraint;
-use ena::unify::{InPlaceUnificationTable, UnificationTable, UnifyKey};
+use ena::snapshot_vec::SnapshotVec;
+use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey};
 use std::slice::Iter;
 
 //mod lattice_type;
@@ -20,13 +21,13 @@ pub mod reification;
 /// is the abstract type.  As such, the abstract type needs to implement `ena::UnifyValue` providing an abstract
 /// "meet" or "unification" function, and `AbstractType`.  The latter trait grants access to a `AbstractType::top()`
 /// function that represents an unconstrained abstract type.
-#[derive(Debug, Clone)]
 pub struct TypeChecker<Key: UnifyKey>
 where
     Key::Value: AbstractType,
 {
     store: InPlaceUnificationTable<Key>,
     keys: Vec<TypeCheckKey<Key>>,
+    snapshots: Vec<Snapshot<InPlace<Key>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -73,7 +74,7 @@ where
 {
     /// Creates a new, empty `TypeChecker`.
     pub fn new() -> Self {
-        TypeChecker { store: UnificationTable::new(), keys: Vec::new() }
+        TypeChecker { store: UnificationTable::new(), keys: Vec::new(), snapshots: Vec::new() }
     }
 }
 
@@ -129,5 +130,47 @@ where
     /// Returns an iterator over all keys currently present in the type checking procedure.
     pub fn keys(&self) -> Iter<TypeCheckKey<Key>> {
         self.keys.iter()
+    }
+
+    /// Takes a snapshot and stores it internally.  Can be rolled back via `TypeChecker::rollback(&mut self)` and committed via
+    /// `TypeChecker::commit_last_ss(&mut self)`.
+    /// When external access to the snapshot is desired or necessary, refer to
+    /// `TypeChecker::take_snapshot(&mut self) -> Snapshot<...>`.
+    pub fn snapshot(&mut self) {
+        self.snapshots.push(self.store.snapshot());
+    }
+
+    /// Takes and returns a snapshot that needs to be managed externally.  Can be rolled back via
+    /// `TypeChecker::rollback_to(&mut self, Snapshot<...>)` and committed via
+    /// `TypeChecker::commit_to(&mut self, Snapshot<...>)`.
+    /// When external management is undesired or unnecessary, refer to `TypeChecker::snapshot(&mut self)`.
+    pub fn take_snapshot(&mut self) -> Snapshot<InPlace<Key>> {
+        self.store.snapshot()
+    }
+
+    /// Commits to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
+    /// For committing to a specific snapshot, refer to `TypeChecker::commit_to(&mut self, Snapshot<...>)`.
+    pub fn commit_last_ss(&mut self) {
+        let latest = self.snapshots.pop().expect("Cannot commit to a snapshot without taking one.");
+        self.store.commit(latest);
+    }
+
+    /// Commits to `snapshot`.
+    /// For committing to the last snapshot taken, refer to `TypeChecker::commit_last_ss(&mut self)`.
+    pub fn commit_to(&mut self, snapshot: Snapshot<InPlace<Key>>) {
+        self.store.commit(snapshot);
+    }
+
+    /// Rolls back to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
+    /// For rolling back to a specific snapshot, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
+    pub fn rollback_to_last_ss(&mut self) {
+        let latest = self.snapshots.pop().expect("Cannot roll back to a snapshot without taking one.");
+        self.store.rollback_to(latest)
+    }
+
+    /// Rolls back to `snapshot`.
+    /// For rolling back to the last snapshot taken, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
+    pub fn rollback_to(&mut self, snapshot: Snapshot<InPlace<Key>>) {
+        self.store.rollback_to(snapshot)
     }
 }
