@@ -1,5 +1,6 @@
 use crate::lattice::reification::{Generalizable, ReificationError, TryReifiable};
 use crate::lattice::{TypeChecker, UpperBounded};
+use crate::tests::AbstractType::{Fixed, Integer};
 use ena::unify::{UnifyKey, UnifyValue};
 use std::cmp::max;
 

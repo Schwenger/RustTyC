@@ -1,5 +1,5 @@
-use crate::lattice::{AbstractType, TypeCheckKey};
 use crate::lattice::TypeChecker;
+use crate::lattice::{AbstractType, TypeCheckKey};
 use ena::unify::UnifyKey;
 use std::collections::HashMap;
 
