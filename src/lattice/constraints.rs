@@ -2,6 +2,9 @@ use crate::lattice::reification::Generalizable;
 use crate::lattice::{AbstractType, TypeCheckKey};
 use ena::unify::UnifyKey;
 
+/// Represents a constraint on one or several abstract types referred to by `TypeCheckKey`s.
+/// Rather than creating these constraints directly, `TypeCheckKey` provides several convenient functions for this
+/// purpose.
 pub enum TypeConstraint<Key: UnifyKey>
 where
     Key::Value: AbstractType,
@@ -39,6 +42,7 @@ impl<Key: UnifyKey> TypeCheckKey<Key>
 where
     Key::Value: AbstractType,
 {
+    /// Bounds `self` by the generalization of the concrete type `conc`.
     pub fn bound_by_concrete<CT>(&self, conc: CT) -> TypeConstraint<Key>
     where
         CT: Generalizable<Generalized = Key::Value>,

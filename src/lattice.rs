@@ -1,5 +1,4 @@
 use crate::lattice::constraints::TypeConstraint;
-use ena::snapshot_vec::SnapshotVec;
 use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey};
 use std::slice::Iter;
 
@@ -30,6 +29,9 @@ where
     snapshots: Vec<Snapshot<InPlace<Key>>>,
 }
 
+/// A `TypeCheckKey` references an abstract type object during the type checking procedure.
+/// It can be created via `TypeChecker::new_key` and provides functions creating `TypeConstraint`s that impose rules on
+/// type variables, e.g. by constraining single types are relating others.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TypeCheckKey<Key: UnifyKey>(Key)
 where
