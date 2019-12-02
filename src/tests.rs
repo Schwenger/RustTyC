@@ -14,7 +14,6 @@ enum AbstractType {
     Integer(u8),
     Numeric,
     Bool,
-    Error,
 }
 
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -29,7 +28,6 @@ impl TryReifiable for AbstractType {
 
     fn try_reify(&self) -> Result<Self::Reified, ReificationError> {
         match self {
-            AbstractType::Error => Err(ReificationError::Conflicting),
             AbstractType::Any => Err(ReificationError::TooGeneral),
             AbstractType::Integer(w) if *w <= 128 => Ok(ConcreteType::Int128),
             AbstractType::Integer(_) => Err(ReificationError::Conflicting),
@@ -135,7 +133,6 @@ impl UnifyValue for AbstractType {
             (Numeric, Integer(w)) | (Integer(w), Numeric) => Ok(Integer(*w)),
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(*i, *f)),
             (Numeric, Numeric) => Ok(Numeric),
-            (Error, _) | (_, Error) => Err(()),
         }
     }
 }
