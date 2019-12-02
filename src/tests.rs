@@ -4,9 +4,11 @@ use ena::unify::{UnifyKey, UnifyValue};
 use std::cmp::max;
 use std::convert::TryInto;
 
+/// The key used for referencing objects with types.  Needs to implement `ena::UnifyKey`.
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
 struct Key(u32);
 
+/// Represents abstract types.  Needs to implement `ena::UnifyValue`.
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
 enum AbstractType {
     Any,
@@ -16,6 +18,8 @@ enum AbstractType {
     Bool,
 }
 
+/// Concrete version of the abstract type.  Not strictly required, unlocks convenient type table extraction when
+/// combined with `Generalizable` and `(Try)Reifiable`.
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
 enum ConcreteType {
     Int128,
@@ -23,33 +27,7 @@ enum ConcreteType {
     Bool,
 }
 
-impl TryReifiable for AbstractType {
-    type Reified = ConcreteType;
-
-    fn try_reify(&self) -> Result<Self::Reified, ReificationError> {
-        match self {
-            AbstractType::Any => Err(ReificationError::TooGeneral),
-            AbstractType::Integer(w) if *w <= 128 => Ok(ConcreteType::Int128),
-            AbstractType::Integer(_) => Err(ReificationError::Conflicting),
-            AbstractType::Fixed(i, f) if *i <= 64 && *f <= 64 => Ok(ConcreteType::FixedPointI64F64),
-            AbstractType::Fixed(_, _) => Err(ReificationError::Conflicting),
-            AbstractType::Numeric => Err(ReificationError::TooGeneral), // Note: it would also make sense e.g. to default to an integer here.
-            AbstractType::Bool => Ok(ConcreteType::Bool),
-        }
-    }
-}
-
-impl Generalizable for ConcreteType {
-    type Generalized = AbstractType;
-
-    fn generalize(&self) -> Self::Generalized {
-        match self {
-            ConcreteType::FixedPointI64F64 => AbstractType::Fixed(64, 64),
-            ConcreteType::Int128 => AbstractType::Integer(128),
-            ConcreteType::Bool => AbstractType::Bool,
-        }
-    }
-}
+// ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
 
 impl UpperBounded for AbstractType {
     fn top() -> Self {
@@ -57,6 +35,7 @@ impl UpperBounded for AbstractType {
     }
 }
 
+// Merely requires `UpperBounded`.
 impl crate::lattice::AbstractType for AbstractType {}
 
 impl UnifyKey for Key {
@@ -70,17 +49,13 @@ impl UnifyKey for Key {
         Key(u)
     }
 
+    /// Doesn't really matter.
     fn tag() -> &'static str {
-        // Doesn't really matter.
         "Key"
     }
 }
 
-#[derive(Clone, Debug, Copy)]
-struct Param {
-    constrained_by: Option<AbstractType>,
-}
-
+/// Represents a type in a parametrized function; either refers to a type parameter or is an abstract type.
 #[derive(Clone, Copy, Debug)]
 enum ParamType {
     ParamId(usize),
@@ -120,6 +95,7 @@ enum Expression {
 impl UnifyValue for AbstractType {
     type Error = ();
 
+    /// Returns the meet of two abstract types.  Returns `Err` if they are incompatible.
     fn unify_values(left: &Self, right: &Self) -> Result<Self, <AbstractType as UnifyValue>::Error> {
         use crate::tests::AbstractType::*;
         match (left, right) {
@@ -133,6 +109,35 @@ impl UnifyValue for AbstractType {
             (Numeric, Integer(w)) | (Integer(w), Numeric) => Ok(Integer(*w)),
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(*i, *f)),
             (Numeric, Numeric) => Ok(Numeric),
+        }
+    }
+}
+
+
+impl TryReifiable for AbstractType {
+    type Reified = ConcreteType;
+
+    fn try_reify(&self) -> Result<Self::Reified, ReificationError> {
+        match self {
+            AbstractType::Any => Err(ReificationError::TooGeneral),
+            AbstractType::Integer(w) if *w <= 128 => Ok(ConcreteType::Int128),
+            AbstractType::Integer(_) => Err(ReificationError::Conflicting),
+            AbstractType::Fixed(i, f) if *i <= 64 && *f <= 64 => Ok(ConcreteType::FixedPointI64F64),
+            AbstractType::Fixed(_, _) => Err(ReificationError::Conflicting),
+            AbstractType::Numeric => Err(ReificationError::TooGeneral), // Note: it would also make sense e.g. to default to an integer here.
+            AbstractType::Bool => Ok(ConcreteType::Bool),
+        }
+    }
+}
+
+impl Generalizable for ConcreteType {
+    type Generalized = AbstractType;
+
+    fn generalize(&self) -> Self::Generalized {
+        match self {
+            ConcreteType::FixedPointI64F64 => AbstractType::Fixed(64, 64),
+            ConcreteType::Int128 => AbstractType::Integer(128),
+            ConcreteType::Bool => AbstractType::Bool,
         }
     }
 }

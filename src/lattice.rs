@@ -2,9 +2,6 @@ use crate::lattice::constraints::TypeConstraint;
 use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey, UnifyValue};
 use std::slice::Iter;
 
-//mod lattice_type;
-//mod type_constraint;
-//mod ena_if;
 pub mod constraints;
 pub mod reification;
 
@@ -37,22 +34,16 @@ pub struct TypeCheckKey<Key: UnifyKey>(Key)
 where
     Key::Value: AbstractType;
 
+/// The main trait representing types throughout the type checking procedure.
+/// It is bound to the type checker as the `Value` for the `Key` parameter.  As such, it needs to implement
+/// `ena::UnifyValue` in addition to `UpperBounded`.
 pub trait AbstractType: UpperBounded {}
-
-///// Provides assess to an element representing the lower bound of the type lattice.
-///// This usually represents a type error.
-//pub trait LowerBounded: Eq + Sized {
-//    fn bot() -> Self;
-//
-//    /// Determines if an element is the lower bound of the type lattice.
-//    fn is_bot(&self) -> bool {
-//        self == &Self::bot()
-//    }
-//}
 
 /// Provides assess to an element representing the upper bound of the type lattice.
 /// This usually represents an unconstrained type.
 pub trait UpperBounded: Eq + Sized {
+    /// Returns the top element, i.e. the least constraint element of the type lattice.
+    /// This is usually some variant of `Any`.
     fn top() -> Self;
 
     /// Determines if an element is the upper bound of the type lattice.
