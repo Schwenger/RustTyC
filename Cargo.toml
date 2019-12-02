@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 ena = "0.13.0" # union-find implementation
+
+[[example]]
+name = "parametrized_function"
