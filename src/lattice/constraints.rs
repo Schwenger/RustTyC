@@ -12,7 +12,6 @@ where
 {
     MoreConcreteThanAll { target: TypeCheckKey<Key>, args: Vec<TypeCheckKey<Key>> },
     MoreConcreteThanType { target: TypeCheckKey<Key>, args: Vec<Key::Value> },
-    BoundByValue { target: TypeCheckKey<Key>, bound: Key::Value },
 }
 
 impl<Key: UnifyKey> TypeCheckKey<Key>
@@ -48,7 +47,6 @@ where
     where
         CT: Generalizable<Generalized = Key::Value>,
     {
-        let bound: Key::Value = conc.generalize();
-        TypeConstraint::BoundByValue { target: *self, bound }
+        self.bound_by_abstract(conc.generalize())
     }
 }
