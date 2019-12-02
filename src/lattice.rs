@@ -1,5 +1,5 @@
 use crate::lattice::constraints::TypeConstraint;
-use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey};
+use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey, UnifyValue};
 use std::slice::Iter;
 
 //mod lattice_type;
@@ -39,16 +39,16 @@ where
 
 pub trait AbstractType: UpperBounded {}
 
-/// Provides assess to an element representing the lower bound of the type lattice.
-/// This usually represents a type error.
-pub trait LowerBounded: Eq + Sized {
-    fn bot() -> Self;
-
-    /// Determines if an element is the lower bound of the type lattice.
-    fn is_bot(&self) -> bool {
-        self == &Self::bot()
-    }
-}
+///// Provides assess to an element representing the lower bound of the type lattice.
+///// This usually represents a type error.
+//pub trait LowerBounded: Eq + Sized {
+//    fn bot() -> Self;
+//
+//    /// Determines if an element is the lower bound of the type lattice.
+//    fn is_bot(&self) -> bool {
+//        self == &Self::bot()
+//    }
+//}
 
 /// Provides assess to an element representing the upper bound of the type lattice.
 /// This usually represents an unconstrained type.
@@ -101,27 +101,29 @@ where
         new
     }
 
-    /// Imposes `constr` on the current state of the type checking procedure.
-    /// This may or may not change the abstract types of some keys.
-    pub fn impose(&mut self, constr: TypeConstraint<Key>) {
+    /// Imposes `constr` on the current state of the type checking procedure. This may or may not change the abstract
+    /// types of some keys.
+    /// This process might entail that several values need to be met.  The evaluation is lazy, i.e. it stops the
+    /// entire process as soon as a single meet fails, leaving all other meet operations unattempted.  This potentially
+    /// shadows additional type errors!
+    pub fn impose(&mut self, constr: TypeConstraint<Key>) -> Result<(), <Key::Value as UnifyValue>::Error> {
         use TypeConstraint::*;
         match constr {
             MoreConcreteThanAll { target, args } => {
                 // Look-up all constrains of args, bound `target` by each.
-                args.iter().for_each(|a| {
-                    let bound = self.store.probe_value(a.0);
-                    let _ = self.store.unify_var_value(target.0, bound);
-                });
-            }
-            BoundByValue { target, bound } => {
-                let _ = self.store.unify_var_value(target.0, bound);
+                for arg in args {
+                    self.store.unify_var_var(target.0, arg.0)?;
+                }
             }
             MoreConcreteThanType { target, args } => {
-                args.into_iter().for_each(|bound| {
-                    let _ = self.store.unify_var_value(target.0, bound);
-                });
+                for bound in args {
+                    dbg!(self.get_type(target));
+                    dbg!(&bound);
+                    self.store.unify_var_value(target.0, bound)?;
+                }
             }
         }
+        Ok(())
     }
 
     /// Returns the abstract type associated with `key`.

@@ -2,4 +2,4 @@ mod lattice;
 #[cfg(test)]
 mod tests;
 
-pub use lattice::{TypeChecker, TypeCheckKey, AbstractType, LowerBounded, constraints::TypeConstraint, reification::*};
+pub use lattice::{constraints::TypeConstraint, reification::*, AbstractType, TypeCheckKey, TypeChecker};
