@@ -5,6 +5,7 @@ use ena::unify::UnifyKey;
 /// Represents a constraint on one or several abstract types referred to by `TypeCheckKey`s.
 /// Rather than creating these constraints directly, `TypeCheckKey` provides several convenient functions for this
 /// purpose.
+#[must_use = "the creation of a `TypeConstraint` has no effect, it should be passed to a `TypeChecker`"]
 pub enum TypeConstraint<Key: UnifyKey>
 where
     Key::Value: AbstractType,
