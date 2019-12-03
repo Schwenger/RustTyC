@@ -1,4 +1,4 @@
-use crate::type_checker::{TypeChecker};
+use crate::type_checker::TypeChecker;
 use crate::{Generalizable, ReificationError, TryReifiable, TypeCheckKey};
 use ena::unify::{UnifyKey, UnifyValue};
 use std::cmp::max;
@@ -110,7 +110,6 @@ impl UnifyValue for AbstractType {
     }
 }
 
-
 impl TryReifiable for AbstractType {
     type Reified = ConcreteType;
 
@@ -118,10 +117,16 @@ impl TryReifiable for AbstractType {
         match self {
             AbstractType::Any => Err(ReificationError::TooGeneral("Cannot reify `Any`.".to_string())),
             AbstractType::Integer(w) if *w <= 128 => Ok(ConcreteType::Int128),
-            AbstractType::Integer(w) => Err(ReificationError::Conflicting(format!("Integer too wide, {}-bit not supported.", w))),
+            AbstractType::Integer(w) => {
+                Err(ReificationError::Conflicting(format!("Integer too wide, {}-bit not supported.", w)))
+            }
             AbstractType::Fixed(i, f) if *i <= 64 && *f <= 64 => Ok(ConcreteType::FixedPointI64F64),
-            AbstractType::Fixed(i, f) => Err(ReificationError::Conflicting(format!("Fixed point number too wide, I{}F{} not supported.", i, f))),
-            AbstractType::Numeric => Err(ReificationError::TooGeneral("Cannot reify a numeric value. Either define a default (int/fixed) or restrict type.".to_string())),
+            AbstractType::Fixed(i, f) => {
+                Err(ReificationError::Conflicting(format!("Fixed point number too wide, I{}F{} not supported.", i, f)))
+            }
+            AbstractType::Numeric => Err(ReificationError::TooGeneral(
+                "Cannot reify a numeric value. Either define a default (int/fixed) or restrict type.".to_string(),
+            )),
             AbstractType::Bool => Ok(ConcreteType::Bool),
         }
     }

@@ -7,12 +7,12 @@
 //! The
 //!
 
-mod type_checker;
 mod constraints;
 mod reification;
 #[cfg(test)]
 mod tests;
+mod type_checker;
 
-pub use type_checker::{AbstractType, TypeCheckKey, TypeChecker};
 pub use constraints::TypeConstraint;
-pub use reification::{ReificationError, Generalizable, TryReifiable, Reifiable};
+pub use reification::{Generalizable, Reifiable, ReificationError, TryReifiable};
+pub use type_checker::{AbstractType, TypeCheckKey, TypeChecker};

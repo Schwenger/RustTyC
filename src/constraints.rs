@@ -1,6 +1,6 @@
 use crate::type_checker::{AbstractType, TypeCheckKey};
-use ena::unify::UnifyKey;
 use crate::Generalizable;
+use ena::unify::UnifyKey;
 
 /// Represents a constraint on one or several abstract types referred to by `TypeCheckKey`s.
 /// Rather than creating these constraints directly, `TypeCheckKey` provides several convenient functions for this

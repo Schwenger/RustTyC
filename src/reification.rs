@@ -37,11 +37,10 @@ where
     Key::Value: AbstractType + TryReifiable,
 {
     /// Returns a mapping of all registered abstract type nodes to their reification.
-    pub fn try_get_reified_type_table(&mut self) -> Vec<(TypeCheckKey<Key>, Result<<Key::Value as TryReifiable>::Reified, ReificationError>)> {
-        self.get_type_table()
-            .into_iter()
-            .map(|(key, value)| (key, value.try_reify()))
-            .collect()
+    pub fn try_get_reified_type_table(
+        &mut self,
+    ) -> Vec<(TypeCheckKey<Key>, Result<<Key::Value as TryReifiable>::Reified, ReificationError>)> {
+        self.get_type_table().into_iter().map(|(key, value)| (key, value.try_reify())).collect()
     }
 }
 

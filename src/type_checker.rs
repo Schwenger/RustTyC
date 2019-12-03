@@ -1,6 +1,6 @@
+use crate::TypeConstraint;
 use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey, UnifyValue};
 use std::slice::Iter;
-use crate::TypeConstraint;
 
 /// The main struct for the type checking procedure.
 /// It manages a set of abstract types in a lattice-like structure and perform a union-find procedure to derive
