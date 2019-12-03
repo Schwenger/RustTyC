@@ -1,6 +1,6 @@
 use ena::unify::{UnifyKey, UnifyValue};
 use std::cmp::max;
-use type_checker::{TryReifiable, ReificationError, Generalizable, UpperBounded, TypeChecker, TypeCheckKey};
+use type_checker::{TryReifiable, ReificationError, Generalizable, TypeChecker, TypeCheckKey};
 use std::convert::TryInto;
 
 /// The key used for referencing objects with types.  Needs to implement `ena::UnifyKey`.
@@ -28,14 +28,12 @@ enum ConcreteType {
 
 // ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
 
-impl UpperBounded for AbstractType {
-    fn top() -> Self {
+// Merely requires `UpperBounded`.
+impl type_checker::AbstractType for AbstractType {
+    fn unconstrained() -> Self {
         AbstractType::Any
     }
 }
-
-// Merely requires `UpperBounded`.
-impl type_checker::AbstractType for AbstractType {}
 
 impl UnifyKey for Key {
     type Value = AbstractType;
@@ -118,12 +116,12 @@ impl TryReifiable for AbstractType {
 
     fn try_reify(&self) -> Result<Self::Reified, ReificationError> {
         match self {
-            AbstractType::Any => Err(ReificationError::TooGeneral),
+            AbstractType::Any => Err(ReificationError::TooGeneral("Cannot reify `Any`.".to_string())),
             AbstractType::Integer(w) if *w <= 128 => Ok(ConcreteType::Int128),
-            AbstractType::Integer(_) => Err(ReificationError::Conflicting),
+            AbstractType::Integer(w) => Err(ReificationError::Conflicting(format!("Integer too wide, {}-bit not supported.", w))),
             AbstractType::Fixed(i, f) if *i <= 64 && *f <= 64 => Ok(ConcreteType::FixedPointI64F64),
-            AbstractType::Fixed(_, _) => Err(ReificationError::Conflicting),
-            AbstractType::Numeric => Err(ReificationError::TooGeneral), // Note: it would also make sense e.g. to default to an integer here.
+            AbstractType::Fixed(i, f) => Err(ReificationError::Conflicting(format!("Fixed point number too wide, I{}F{} not supported.", i, f))),
+            AbstractType::Numeric => Err(ReificationError::TooGeneral("Cannot reify a numeric value. Either define a default (int/fixed) or restrict type.".to_string())),
             AbstractType::Bool => Ok(ConcreteType::Bool),
         }
     }

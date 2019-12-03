@@ -1,4 +1,4 @@
-use crate::lattice::{AbstractType, TypeCheckKey};
+use crate::type_checker::{AbstractType, TypeCheckKey};
 use ena::unify::UnifyKey;
 use crate::Generalizable;
 

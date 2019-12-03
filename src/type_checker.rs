@@ -9,11 +9,42 @@ use crate::TypeConstraint;
 /// `TypeChecker::new_key(&mut self)`).
 ///
 /// # Usage
-/// Requires two types: `Key` and a type representing an abstract type.
-/// `Key` needs to implement `ena::UnifyKey`, which has an associated type `ena::Key::Value` that
-/// is the abstract type.  As such, the abstract type needs to implement `ena::UnifyValue` providing an abstract
-/// "meet" or "unification" function, and `AbstractType`.  The latter trait grants access to a `AbstractType::top()`
-/// function that represents an unconstrained abstract type.
+/// Requires two types: `Key` and `AbstractType`.
+/// `Key` needs to implement `ena::UnifyKey`, which has an associated type `ena::Key::Value` that is the `AbstractType`.
+/// Most of the time, the key is simply a `u32` in disguise.
+/// The abstract type needs to implement `ena::UnifyValue` providing an abstract "meet" or "unification" function, and
+/// `type_check::AbstractType`.
+/// ```
+/// use type_checker::TypeCheckKey;
+/// use type_checker::TypeChecker;
+/// struct Key(u32);
+/// enum AbstractType {
+///   Variant1,
+///   /* ... */
+/// }
+/// impl type_checker::AbstractType for AbstractType {
+///     /* ... */
+/// }
+/// impl ena::UnifyValue for AbstractType {
+///   /* ... */
+/// }
+/// impl ena::UnifyKey for Key {
+///   type Value = AbstractType;
+///   /* ... */
+/// }
+///
+/// let mut tc: TypeChecker<Key> = TypeChecker::new();
+///
+/// let first = tc.new_key();
+/// let second = tc.new_key();
+///
+/// assert!(tc.impose(second.bound_by_Abstract(AbstractType::Variant1)).is_ok());
+/// assert!(tc.impose(first.more_concrete_than(second)).is_ok());
+///
+/// assert_eq!(tc.get_type(first), tc.get_type(second));
+/// ```
+///
+/// For a full example, refer to the example directory.
 pub struct TypeChecker<Key: UnifyKey>
 where
     Key::Value: AbstractType,
@@ -33,21 +64,17 @@ where
 
 /// The main trait representing types throughout the type checking procedure.
 /// It is bound to the type checker as the `Value` for the `Key` parameter.  As such, it needs to implement
-/// `ena::UnifyValue` in addition to `UpperBounded`.
-pub trait AbstractType: UpperBounded {}
+/// `ena::UnifyValue`.
+pub trait AbstractType: Eq + Sized {
+    /// Returns an unconstrained abstract type.
+    fn unconstrained() -> Self;
 
-/// Provides assess to an element representing the upper bound of the type lattice.
-/// This usually represents an unconstrained type.
-pub trait UpperBounded: Eq + Sized {
-    /// Returns the top element, i.e. the least constraint element of the type lattice.
-    /// This is usually some variant of `Any`.
-    fn top() -> Self;
-
-    /// Determines if an element is the upper bound of the type lattice.
-    fn is_top(&self) -> bool {
-        self == &Self::top()
+    /// Determines if an element is unconstrained.
+    fn is_unconstrained(&self) -> bool {
+        self == &Self::unconstrained()
     }
 }
+
 impl<Key: UnifyKey> Default for TypeChecker<Key>
 where
     Key::Value: AbstractType,
@@ -62,7 +89,7 @@ impl<Key: UnifyKey> TypeChecker<Key>
 where
     Key::Value: AbstractType,
 {
-    /// Creates a new, empty `TypeChecker`.
+    /// Creates a new, empty `TypeChecker`.  
     pub fn new() -> Self {
         TypeChecker { store: UnificationTable::new(), keys: Vec::new(), snapshots: Vec::new() }
     }
@@ -74,7 +101,7 @@ where
 {
     /// Returns a view on the current state of `self`.  Returns a mapping of all keys known to
     /// `self` to the `Key::Value` associated with it.
-    pub fn get_state(&mut self) -> Vec<(TypeCheckKey<Key>, Key::Value)> {
+    pub fn get_type_table(&mut self) -> Vec<(TypeCheckKey<Key>, Key::Value)> {
         let keys = self.keys.clone();
         keys.into_iter().map(|key| key).map(|key| (key, self.get_type(key))).collect()
     }
@@ -84,7 +111,7 @@ where
     /// `TypeChecker::get_type(TypeCheckKey)` and constraints can be imposed using `TypeChecker::impose(TypeConstraint)`.
     /// `TypeCheckKey` provides means to create such `TypeConstraints`.
     pub fn new_key(&mut self) -> TypeCheckKey<Key> {
-        let new = TypeCheckKey(self.store.new_key(<Key::Value as UpperBounded>::top()));
+        let new = TypeCheckKey(self.store.new_key(<Key::Value as AbstractType>::unconstrained()));
         self.keys.push(new);
         new
     }

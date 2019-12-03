@@ -1,4 +1,4 @@
-use crate::lattice::{TypeChecker, UpperBounded};
+use crate::type_checker::{TypeChecker};
 use crate::{Generalizable, ReificationError, TryReifiable, TypeCheckKey};
 use ena::unify::{UnifyKey, UnifyValue};
 use std::cmp::max;
@@ -29,14 +29,11 @@ enum ConcreteType {
 
 // ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
 
-impl UpperBounded for AbstractType {
-    fn top() -> Self {
+impl crate::type_checker::AbstractType for AbstractType {
+    fn unconstrained() -> Self {
         AbstractType::Any
     }
 }
-
-// Merely requires `UpperBounded`.
-impl crate::lattice::AbstractType for AbstractType {}
 
 impl UnifyKey for Key {
     type Value = AbstractType;
@@ -119,12 +116,12 @@ impl TryReifiable for AbstractType {
 
     fn try_reify(&self) -> Result<Self::Reified, ReificationError> {
         match self {
-            AbstractType::Any => Err(ReificationError::TooGeneral),
+            AbstractType::Any => Err(ReificationError::TooGeneral("Cannot reify `Any`.".to_string())),
             AbstractType::Integer(w) if *w <= 128 => Ok(ConcreteType::Int128),
-            AbstractType::Integer(_) => Err(ReificationError::Conflicting),
+            AbstractType::Integer(w) => Err(ReificationError::Conflicting(format!("Integer too wide, {}-bit not supported.", w))),
             AbstractType::Fixed(i, f) if *i <= 64 && *f <= 64 => Ok(ConcreteType::FixedPointI64F64),
-            AbstractType::Fixed(_, _) => Err(ReificationError::Conflicting),
-            AbstractType::Numeric => Err(ReificationError::TooGeneral), // Note: it would also make sense e.g. to default to an integer here.
+            AbstractType::Fixed(i, f) => Err(ReificationError::Conflicting(format!("Fixed point number too wide, I{}F{} not supported.", i, f))),
+            AbstractType::Numeric => Err(ReificationError::TooGeneral("Cannot reify a numeric value. Either define a default (int/fixed) or restrict type.".to_string())),
             AbstractType::Bool => Ok(ConcreteType::Bool),
         }
     }
@@ -140,24 +137,6 @@ impl Generalizable for ConcreteType {
             ConcreteType::Bool => AbstractType::Bool,
         }
     }
-}
-
-#[test]
-fn create_different_types() {
-    let mut tc: TypeChecker<Key> = TypeChecker::new();
-    let first = tc.new_key();
-    let second = tc.new_key();
-    assert_ne!(first, second);
-}
-
-#[test]
-fn bound_by_concrete_transitive() {
-    let mut tc: TypeChecker<Key> = TypeChecker::new();
-    let first = tc.new_key();
-    let second = tc.new_key();
-    assert!(tc.impose(second.bound_by_concrete(ConcreteType::Int128)).is_ok());
-    assert!(tc.impose(first.more_concrete_than(second)).is_ok());
-    assert_eq!(tc.get_type(first), tc.get_type(second));
 }
 
 fn build_type_error() -> Expression {
@@ -270,6 +249,24 @@ fn tc_expr(
 }
 
 #[test]
+fn create_different_types() {
+    let mut tc: TypeChecker<Key> = TypeChecker::new();
+    let first = tc.new_key();
+    let second = tc.new_key();
+    assert_ne!(first, second);
+}
+
+#[test]
+fn bound_by_concrete_transitive() {
+    let mut tc: TypeChecker<Key> = TypeChecker::new();
+    let first = tc.new_key();
+    let second = tc.new_key();
+    assert!(tc.impose(second.bound_by_concrete(ConcreteType::Int128)).is_ok());
+    assert!(tc.impose(first.more_concrete_than(second)).is_ok());
+    assert_eq!(tc.get_type(first), tc.get_type(second));
+}
+
+#[test]
 fn complex_type_check() {
     let expr = build_complex_expression_type_checks();
     let mut tc: TypeChecker<Key> = TypeChecker::new();
@@ -298,5 +295,4 @@ fn failing_type_check() {
         }
         Err(_) => {}
     }
-    println!("{:?}", tc.get_state());
 }

@@ -1,11 +1,11 @@
-use crate::lattice::TypeChecker;
-use crate::lattice::{AbstractType, TypeCheckKey};
+use crate::type_checker::TypeChecker;
+use crate::type_checker::{AbstractType, TypeCheckKey};
 use ena::unify::UnifyKey;
 
 /// Indicates that an abstract type could not be reified.
 pub enum ReificationError {
-    TooGeneral,
-    Conflicting,
+    TooGeneral(String),
+    Conflicting(String),
 }
 
 /// A type implementing this trait can be `reified` into a concrete representation.
@@ -36,10 +36,12 @@ impl<Key: UnifyKey> TypeChecker<Key>
 where
     Key::Value: AbstractType + TryReifiable,
 {
-    /// Attempts to reify all registered abstract types into concrete ones.
-    /// Returns a vector representing a mapping of a key
-    pub fn try_get_reified(&mut self) -> Vec<(TypeCheckKey<Key>, <Key::Value as TryReifiable>::Reified)> {
-        self.get_state().into_iter().flat_map(|(key, value)| value.try_reify().ok().map(|ty| (key, ty))).collect()
+    /// Returns a mapping of all registered abstract type nodes to their reification.
+    pub fn try_get_reified_type_table(&mut self) -> Vec<(TypeCheckKey<Key>, Result<<Key::Value as TryReifiable>::Reified, ReificationError>)> {
+        self.get_type_table()
+            .into_iter()
+            .map(|(key, value)| (key, value.try_reify()))
+            .collect()
     }
 }
 
@@ -47,7 +49,8 @@ impl<Key: UnifyKey> TypeChecker<Key>
 where
     Key::Value: AbstractType + Reifiable,
 {
-    pub fn get_reified(&mut self) -> Vec<(TypeCheckKey<Key>, <Key::Value as Reifiable>::Reified)> {
-        self.get_state().into_iter().map(|(key, value)| (key, value.reify())).collect()
+    /// Returns a mapping of all registered abstract type nodes to their reification.
+    pub fn get_reified_type_table(&mut self) -> Vec<(TypeCheckKey<Key>, <Key::Value as Reifiable>::Reified)> {
+        self.get_type_table().into_iter().map(|(key, value)| (key, value.reify())).collect()
     }
 }
