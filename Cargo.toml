@@ -1,10 +1,14 @@
 [package]
 name = "rusttyc"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Maximilian Schwenger <schwenger@react.uni-saarland.de>"]
 edition = "2018"
 license = "MIT"
 description = "A library for writing type checkers with a lattice-like type system in rust.  Provides a simple and intuitive interface to an underlying union-find implementation."
+documentation = "https://schwenger.github.io/RustTyC/"
+repository = "https://github.com/Schwenger/RustTyC/"
+keywords = ["Types", "Type Checker", "Lattice"]
+categories = ["parsing"]
 
 [dependencies]
 ena = "0.13.0" # union-find implementation
