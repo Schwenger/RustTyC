@@ -2,9 +2,23 @@ use crate::type_checker::TypeChecker;
 use crate::type_checker::{AbstractType, TypeCheckKey};
 use ena::unify::UnifyKey;
 
-/// Indicates that an abstract type could not be reified.
+/// Indicates that an abstract type could not be reified because it is too general or too restrictive.
+/// # Example
+/// 1. A numeric type cannot be reified into any concrete value because the concrete counterpart could be a natural
+/// number, integer, floating point number, .... -> `ReificationError::TooGeneral`
+/// 2. An integer type cannot be reified into a concrete type with fixed memory layout except a default size is
+/// defined, e.g. an Int will be reified into an Int32. -> `ReificationError::TooGeneral`
+/// 3. An unbounded integer might not have a concrete counterpart because the system requires a concrete bit size.
+/// -> `ReificationError::Conflicting`
+///
+/// Note the subtle difference between `ReificationError::TooGeneral` and `ReificationError::Conflicting`:
+///     + In the `Conflicting` case there is no valid counterpart
+///     + In the `TooGeneral` case the counterpart is not defined or not unique but could exist.
 pub enum ReificationError {
+    /// Attempting to reify an abstract type with either no unique concrete counterpart or with no defined default
+    /// reification value results in this error.
     TooGeneral(String),
+    /// Attempting to reify an abstract type for which no concrete counterpart does exist results in this error.
     Conflicting(String),
 }
 
@@ -29,6 +43,7 @@ pub trait TryReifiable {
 /// This transformation cannot fail.
 pub trait Generalizable {
     type Generalized;
+    /// Generalizes the given concrete type.
     fn generalize(&self) -> Self::Generalized;
 }
 

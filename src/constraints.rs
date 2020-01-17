@@ -10,7 +10,10 @@ pub enum TypeConstraint<Key: UnifyKey>
 where
     Key::Value: AbstractType,
 {
+    /// Represents the restriction that `target` is more concrete than the meet of all abstract types belonging to the
+    /// keys in `args`.
     MoreConcreteThanAll { target: TypeCheckKey<Key>, args: Vec<TypeCheckKey<Key>> },
+    /// Represents the restriction that `target` is more concrete than the meet of all abstract types in `args`.
     MoreConcreteThanType { target: TypeCheckKey<Key>, args: Vec<Key::Value> },
 }
 
@@ -19,7 +22,7 @@ where
     Key::Value: AbstractType,
 {
     /// States that the left operand needs to be at least as concrete as the right one.
-    /// Imposing this constraints let the abstract type of `self` become be the meet of the current
+    /// Imposing these constraints lets the abstract type of `self` become the meet of the current
     /// abstract type of `self` and `other`.
     pub fn more_concrete_than(self, other: Self) -> TypeConstraint<Key> {
         TypeConstraint::MoreConcreteThanAll { target: self, args: vec![other] }

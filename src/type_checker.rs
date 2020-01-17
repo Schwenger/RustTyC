@@ -1,51 +1,19 @@
 use crate::TypeConstraint;
-use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey, UnifyValue};
+use ena::unify::{
+    InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey as EnaKey, UnifyValue as EnaValue,
+};
 use std::slice::Iter;
 
+/// Represents a type checker.
 /// The main struct for the type checking procedure.
 /// It manages a set of abstract types in a lattice-like structure and perform a union-find procedure to derive
 /// the least concrete abstract type that satisfies a defined set of constraints.
-/// Each abstract type is referred to with a key assigned by the `TypeChecker` (refer to
-/// `TypeChecker::new_key(&mut self)`).
+/// Each abstract type is referred to with a key assigned by the `TypeChecker`
 ///
-/// # Usage
-/// Requires two types: `Key` and `AbstractType`.
-/// `Key` needs to implement `ena::UnifyKey`, which has an associated type `ena::Key::Value` that is the `AbstractType`.
-/// Most of the time, the key is simply a `u32` in disguise.
-/// The abstract type needs to implement `ena::UnifyValue` providing an abstract "meet" or "unification" function, and
-/// `type_check::AbstractType`.
-/// ```
-/// use type_checker::TypeCheckKey;
-/// use type_checker::TypeChecker;
-/// struct Key(u32);
-/// enum AbstractType {
-///   Variant1,
-///   /* ... */
-/// }
-/// impl type_checker::AbstractType for AbstractType {
-///     /* ... */
-/// }
-/// impl ena::UnifyValue for AbstractType {
-///   /* ... */
-/// }
-/// impl ena::UnifyKey for Key {
-///   type Value = AbstractType;
-///   /* ... */
-/// }
-///
-/// let mut tc: TypeChecker<Key> = TypeChecker::new();
-///
-/// let first = tc.new_key();
-/// let second = tc.new_key();
-///
-/// assert!(tc.impose(second.bound_by_Abstract(AbstractType::Variant1)).is_ok());
-/// assert!(tc.impose(first.more_concrete_than(second)).is_ok());
-///
-/// assert_eq!(tc.get_type(first), tc.get_type(second));
-/// ```
-///
-/// For a full example, refer to the example directory.
-pub struct TypeChecker<Key: UnifyKey>
+/// The `TypeChecker` allows for the creation of keys and imposition of constraints on them,
+/// refer to `TypeChecker::new_key(&mut self)` and `TypeChecker::impose(&mut self, constr: TypeConstraint<Key>)`,
+/// respectively.
+pub struct TypeChecker<Key: EnaKey>
 where
     Key::Value: AbstractType,
 {
@@ -58,13 +26,13 @@ where
 /// It can be created via `TypeChecker::new_key` and provides functions creating `TypeConstraint`s that impose rules on
 /// type variables, e.g. by constraining single types are relating others.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TypeCheckKey<Key: UnifyKey>(Key)
+pub struct TypeCheckKey<Key: EnaKey>(Key)
 where
     Key::Value: AbstractType;
 
 /// The main trait representing types throughout the type checking procedure.
 /// It is bound to the type checker as the `Value` for the `Key` parameter.  As such, it needs to implement
-/// `ena::UnifyValue`.
+/// `EnaValue`.
 pub trait AbstractType: Eq + Sized {
     /// Returns an unconstrained abstract type.
     fn unconstrained() -> Self;
@@ -75,7 +43,7 @@ pub trait AbstractType: Eq + Sized {
     }
 }
 
-impl<Key: UnifyKey> Default for TypeChecker<Key>
+impl<Key: EnaKey> Default for TypeChecker<Key>
 where
     Key::Value: AbstractType,
 {
@@ -84,8 +52,8 @@ where
     }
 }
 
-//// %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
-impl<Key: UnifyKey> TypeChecker<Key>
+// %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
+impl<Key: EnaKey> TypeChecker<Key>
 where
     Key::Value: AbstractType,
 {
@@ -95,7 +63,7 @@ where
     }
 }
 
-impl<Key: UnifyKey> TypeChecker<Key>
+impl<Key: EnaKey> TypeChecker<Key>
 where
     Key::Value: AbstractType,
 {
@@ -121,7 +89,7 @@ where
     /// This process might entail that several values need to be met.  The evaluation is lazy, i.e. it stops the
     /// entire process as soon as a single meet fails, leaving all other meet operations unattempted.  This potentially
     /// shadows additional type errors!
-    pub fn impose(&mut self, constr: TypeConstraint<Key>) -> Result<(), <Key::Value as UnifyValue>::Error> {
+    pub fn impose(&mut self, constr: TypeConstraint<Key>) -> Result<(), <Key::Value as EnaValue>::Error> {
         use TypeConstraint::*;
         match constr {
             MoreConcreteThanAll { target, args } => {
