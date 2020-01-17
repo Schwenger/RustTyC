@@ -3,7 +3,7 @@
 //! internally to successively constrain types.
 //!
 //! The main component is the `TypeChecker` struct, which is parametrized by a `Key` that implements the `ena::UnifyKey`
-//! trait.  This trait in-turn requires an implementation of `EnaValue` and `type_checker::AbstractValue.
+//! trait.  This trait in-turn requires an implementation of `EnaValue` and `type_checker::AbstractValue`.
 //! The `TypeChecker` manages a set of abstract types in a lattice-like structure and perform a union-find procedure to
 //! derive the least concrete abstract type that satisfies a defined set of constraints.
 //! Each abstract type is referred to with a key assigned by the `TypeChecker` (refer to
