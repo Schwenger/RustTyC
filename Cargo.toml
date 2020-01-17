@@ -7,7 +7,7 @@ license = "MIT"
 description = "A library for writing type checkers with a lattice-like type system in rust.  Provides a simple and intuitive interface to an underlying union-find implementation."
 documentation = "https://schwenger.github.io/RustTyC/"
 repository = "https://github.com/Schwenger/RustTyC/"
-keywords = ["Types", "Type Checker", "Lattice"]
+keywords = ["Types", "TypeChecker", "Lattice"]
 categories = ["parsing"]
 
 [dependencies]
