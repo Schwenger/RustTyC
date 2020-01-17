@@ -1,13 +1,12 @@
-use ena::unify::{UnifyKey, UnifyValue};
+use rusttyc::{EnaKey, EnaValue, Generalizable, ReificationError, TryReifiable, TypeCheckKey, TypeChecker};
 use std::cmp::max;
 use std::convert::TryInto;
-use type_checker::{Generalizable, ReificationError, TryReifiable, TypeCheckKey, TypeChecker};
 
-/// The key used for referencing objects with types.  Needs to implement `ena::UnifyKey`.
+/// The key used for referencing objects with types.  Needs to implement `EnaKey`.
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
 struct Key(u32);
 
-/// Represents abstract types.  Needs to implement `ena::UnifyValue`.
+/// Represents abstract types.  Needs to implement `EnaValue`.
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
 enum AbstractType {
     Any,
@@ -29,13 +28,13 @@ enum ConcreteType {
 // ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
 
 // Merely requires `UpperBounded`.
-impl type_checker::AbstractType for AbstractType {
+impl rusttyc::AbstractType for AbstractType {
     fn unconstrained() -> Self {
         AbstractType::Any
     }
 }
 
-impl UnifyKey for Key {
+impl EnaKey for Key {
     type Value = AbstractType;
 
     fn index(&self) -> u32 {
@@ -89,11 +88,11 @@ enum Expression {
     ConstFixed(i64, u64),
 }
 
-impl UnifyValue for AbstractType {
+impl EnaValue for AbstractType {
     type Error = ();
 
     /// Returns the meet of two abstract types.  Returns `Err` if they are incompatible.
-    fn unify_values(left: &Self, right: &Self) -> Result<Self, <AbstractType as UnifyValue>::Error> {
+    fn unify_values(left: &Self, right: &Self) -> Result<Self, <AbstractType as EnaValue>::Error> {
         use AbstractType::*;
         match (left, right) {
             (Any, other) | (other, Any) => Ok(other.clone()),
@@ -173,7 +172,7 @@ fn build_complex_expression_type_checks() -> Expression {
 fn tc_expr(
     tc: &mut TypeChecker<Key>,
     expr: &Expression,
-) -> Result<TypeCheckKey<Key>, <AbstractType as UnifyValue>::Error> {
+) -> Result<TypeCheckKey<Key>, <AbstractType as EnaValue>::Error> {
     use Expression::*;
     let key_result = tc.new_key(); // will be returned
     match expr {

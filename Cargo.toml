@@ -1,6 +1,6 @@
 [package]
-name = "type_checker"
-version = "0.1.0"
+name = "rusttyc"
+version = "0.2.0"
 authors = ["Maximilian Schwenger <schwenger@react.uni-saarland.de>"]
 edition = "2018"
 

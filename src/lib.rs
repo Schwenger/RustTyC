@@ -16,7 +16,7 @@
 //! The abstract type needs to implement `EnaValue` providing an abstract "meet" or "unification" function, and
 //! `type_check::AbstractType`.
 //! ```
-//! use type_checker::{ TypeCheckKey, TypeChecker, EnaValue, EnaKey };
+//! use rusttyc::{ TypeCheckKey, TypeChecker, EnaValue, EnaKey };
 //! use ena::unify::UnifyValue;
 //! #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 //! struct Key(u32);
@@ -26,7 +26,7 @@
 //!     Unconstrained,
 //!     /* ... */
 //! }
-//! impl type_checker::AbstractType for AbstractType {
+//! impl rusttyc::AbstractType for AbstractType {
 //!     fn unconstrained() -> Self {
 //!         Self::Unconstrained
 //!     }
