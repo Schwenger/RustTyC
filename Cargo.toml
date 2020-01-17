@@ -1,6 +1,6 @@
 [package]
 name = "rusttyc"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Maximilian Schwenger <schwenger@react.uni-saarland.de>"]
 edition = "2018"
 license = "MIT"
