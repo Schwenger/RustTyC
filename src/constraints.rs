@@ -6,15 +6,28 @@ use ena::unify::UnifyKey;
 /// Rather than creating these constraints directly, `TypeCheckKey` provides several convenient functions for this
 /// purpose.
 #[must_use = "the creation of a `TypeConstraint` has no effect, it should be passed to a `TypeChecker`"]
+#[derive(Debug, Clone)]
 pub enum TypeConstraint<Key: UnifyKey>
 where
     Key::Value: AbstractType,
 {
     /// Represents the restriction that `target` is more concrete than the meet of all abstract types belonging to the
     /// keys in `args`.
-    MoreConcreteThanAll { target: TypeCheckKey<Key>, args: Vec<TypeCheckKey<Key>> },
+    MoreConcreteThanAll {
+        /// The key that is supposed to be more concrete than the meet of all abstract types behind `args`.
+        target: TypeCheckKey<Key>,
+        /// Collection of keys where `target` is supposed to be more concrete than the abstract types behind elements
+        /// of this collection.
+        args: Vec<TypeCheckKey<Key>>,
+    },
+
     /// Represents the restriction that `target` is more concrete than the meet of all abstract types in `args`.
-    MoreConcreteThanType { target: TypeCheckKey<Key>, args: Vec<Key::Value> },
+    MoreConcreteThanType {
+        /// The key that is supposed to be more concrete than the concrete types in `args`.
+        target: TypeCheckKey<Key>,
+        /// Collection of types where `target` is supposed to be more concrete than elements of this collection.
+        args: Vec<Key::Value>,
+    },
 }
 
 impl<Key: UnifyKey> TypeCheckKey<Key>

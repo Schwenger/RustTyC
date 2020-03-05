@@ -2,6 +2,7 @@ use crate::TypeConstraint;
 use ena::unify::{
     InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey as EnaKey, UnifyValue as EnaValue,
 };
+use std::fmt::{Debug, Error, Formatter};
 use std::slice::Iter;
 
 /// Represents a type checker.
@@ -20,6 +21,21 @@ where
     store: InPlaceUnificationTable<Key>,
     keys: Vec<TypeCheckKey<Key>>,
     snapshots: Vec<Snapshot<InPlace<Key>>>,
+}
+
+impl<Key: EnaKey> Debug for TypeChecker<Key>
+where
+    Key::Value: AbstractType,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "TypeChecker: [\n\tstore: {:?}, \n\tkeys: {:?}, \n\tsnapshots: {}\n]",
+            self.store,
+            self.keys,
+            self.snapshots.len()
+        )
+    }
 }
 
 /// A `TypeCheckKey` references an abstract type object during the type checking procedure.

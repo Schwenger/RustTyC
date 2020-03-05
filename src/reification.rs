@@ -14,6 +14,7 @@ use ena::unify::UnifyKey;
 /// Note the subtle difference between `ReificationError::TooGeneral` and `ReificationError::Conflicting`:
 ///     + In the `Conflicting` case there is no valid counterpart
 ///     + In the `TooGeneral` case the counterpart is not defined or not unique but could exist.
+#[derive(Debug)]
 pub enum ReificationError {
     /// Attempting to reify an abstract type with either no unique concrete counterpart or with no defined default
     /// reification value results in this error.
@@ -25,6 +26,7 @@ pub enum ReificationError {
 /// A type implementing this trait can be `reified` into a concrete representation.
 /// This transformation cannot fail.  If it is fallible, refer to `TryReifiable`.
 pub trait Reifiable {
+    /// The result type of the reification.
     type Reified;
     /// Transforms an instance of `Reifiable` into an more concrete `Reifiable::Reified` type.
     fn reify(&self) -> Self::Reified;
@@ -33,6 +35,7 @@ pub trait Reifiable {
 /// A type implementing this trait can potentially be `reified` into a concrete representation.
 /// This transformation can fail.  If it is infallible, refer to `Reifiable`.
 pub trait TryReifiable {
+    /// The result type of the attempted reification.
     type Reified;
     /// Attempts to transform an instance of `TryReifiable` into an more concrete
     /// `TryReifiable::Reified` type.  Returns a `ReificationError` if the transformation fails.
@@ -42,6 +45,7 @@ pub trait TryReifiable {
 /// A type implementing this trait can be `generalized` into an abstract representation.
 /// This transformation cannot fail.
 pub trait Generalizable {
+    /// The result type of the generalization.
     type Generalized;
     /// Generalizes the given concrete type.
     fn generalize(&self) -> Self::Generalized;
