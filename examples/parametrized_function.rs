@@ -25,7 +25,13 @@ enum ConcreteType {
     Bool,
 }
 
+/// Won't be used.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+struct Variable(usize);
+
 // ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
+
+impl rusttyc::TCVar for Variable {}
 
 // Merely requires `UpperBounded`.
 impl rusttyc::AbstractType for AbstractType {
@@ -170,11 +176,11 @@ fn build_complex_expression_type_checks() -> Expression {
 /// requires a context with a mapping of e.g. Variable -> Key.  The context can be built during a first pass over the
 /// tree.
 fn tc_expr(
-    tc: &mut TypeChecker<Key>,
+    tc: &mut TypeChecker<Key, Variable>,
     expr: &Expression,
 ) -> Result<TypeCheckKey<Key>, <AbstractType as EnaValue>::Error> {
     use Expression::*;
-    let key_result = tc.new_key(); // will be returned
+    let key_result = tc.new_term_key(); // will be returned
     match expr {
         ConstInt(c) => {
             let width = (128 - c.leading_zeros()).try_into().unwrap();
@@ -202,7 +208,7 @@ fn tc_expr(
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
             // would copy the keys rather than creating new ones.
             let params: Vec<(Option<AbstractType>, TypeCheckKey<Key>)> =
-                param_constraints.iter().map(|p| (*p, tc.new_key())).collect();
+                param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
             dbg!(&params);
             for (arg_ty, arg_expr) in args {
                 let arg_key = tc_expr(tc, arg_expr)?;
@@ -239,7 +245,7 @@ fn main() {
     // Build an expression to type-check.
     let expr = build_complex_expression_type_checks();
     // Create an empty type checker.
-    let mut tc: TypeChecker<Key> = TypeChecker::new();
+    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
     // Type check the expression.
     let res = tc_expr(&mut tc, &expr);
     match res {

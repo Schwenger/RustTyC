@@ -2,7 +2,9 @@ use crate::TypeConstraint;
 use ena::unify::{
     InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey as EnaKey, UnifyValue as EnaValue,
 };
+use std::collections::HashMap;
 use std::fmt::{Debug, Error, Formatter};
+use std::hash::Hash;
 use std::slice::Iter;
 
 /// Represents a type checker.
@@ -14,16 +16,17 @@ use std::slice::Iter;
 /// The `TypeChecker` allows for the creation of keys and imposition of constraints on them,
 /// refer to `TypeChecker::new_key(&mut self)` and `TypeChecker::impose(&mut self, constr: TypeConstraint<Key>)`,
 /// respectively.
-pub struct TypeChecker<Key: EnaKey>
+pub struct TypeChecker<Key: EnaKey, Var: TCVar>
 where
     Key::Value: AbstractType,
 {
     store: InPlaceUnificationTable<Key>,
     keys: Vec<TypeCheckKey<Key>>,
     snapshots: Vec<Snapshot<InPlace<Key>>>,
+    variables: HashMap<Var, TypeCheckKey<Key>>,
 }
 
-impl<Key: EnaKey> Debug for TypeChecker<Key>
+impl<Key: EnaKey, Var: TCVar> Debug for TypeChecker<Key, Var>
 where
     Key::Value: AbstractType,
 {
@@ -37,6 +40,10 @@ where
         )
     }
 }
+
+/// Represents a re-usable variable in the type checking procedure.  TypeCheckKeys for variables will be managed by the
+/// `TypeChecker` to avoid duplication.
+pub trait TCVar: Eq + Hash + Clone {}
 
 /// A `TypeCheckKey` references an abstract type object during the type checking procedure.
 /// It can be created via `TypeChecker::new_key` and provides functions creating `TypeConstraint`s that impose rules on
@@ -59,7 +66,7 @@ pub trait AbstractType: Eq + Sized {
     }
 }
 
-impl<Key: EnaKey> Default for TypeChecker<Key>
+impl<Key: EnaKey, Var: TCVar> Default for TypeChecker<Key, Var>
 where
     Key::Value: AbstractType,
 {
@@ -69,20 +76,20 @@ where
 }
 
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
-impl<Key: EnaKey> TypeChecker<Key>
+impl<Key: EnaKey, Var: TCVar> TypeChecker<Key, Var>
 where
     Key::Value: AbstractType,
 {
     /// Creates a new, empty `TypeChecker`.  
     pub fn new() -> Self {
-        TypeChecker { store: UnificationTable::new(), keys: Vec::new(), snapshots: Vec::new() }
+        TypeChecker {
+            store: UnificationTable::new(),
+            keys: Vec::new(),
+            snapshots: Vec::new(),
+            variables: HashMap::new(),
+        }
     }
-}
 
-impl<Key: EnaKey> TypeChecker<Key>
-where
-    Key::Value: AbstractType,
-{
     /// Returns a view on the current state of `self`.  Returns a mapping of all keys known to
     /// `self` to the `Key::Value` associated with it.
     pub fn get_type_table(&mut self) -> Vec<(TypeCheckKey<Key>, Key::Value)> {
@@ -92,12 +99,32 @@ where
 
     /// Creates a new unconstrained variable that can be referred to using the returned
     /// `TypeCheckKey`.  The current state of it can be accessed using
-    /// `TypeChecker::get_type(TypeCheckKey)` and constraints can be imposed using `TypeChecker::impose(TypeConstraint)`.
+    /// `TypeChecker::get_type(TypeCheckKey)` and constraints can be imposed using
+    /// `TypeChecker::impose(TypeConstraint)`.
     /// `TypeCheckKey` provides means to create such `TypeConstraints`.
-    pub fn new_key(&mut self) -> TypeCheckKey<Key> {
+    /// This key ought to represent a non-reusable term rather than a variable; refer to
+    /// `TypeChecker::new_var_key(Var)`.
+    pub fn new_term_key(&mut self) -> TypeCheckKey<Key> {
         let new = TypeCheckKey(self.store.new_key(<Key::Value as AbstractType>::unconstrained()));
         self.keys.push(new);
         new
+    }
+
+    /// Creates a new unconstrained variable that can be referred to using the returned
+    /// `TypeCheckKey`.  The current state of it can be accessed using
+    /// `TypeChecker::get_type(TypeCheckKey)` and constraints can be imposed using
+    /// `TypeChecker::impose(TypeConstraint)`.
+    /// `TypeCheckKey` provides means to create such `TypeConstraints`.
+    /// This key ought to represent a reusable variable rather than a term; refer to
+    /// `TypeChecker::new_term_key()`.
+    pub fn new_var_key(&mut self, var: &Var) -> TypeCheckKey<Key> {
+        // Avoid cloning `var` by forgoing the `entry` function if possible.
+        if let Some(tck) = self.variables.get(var) {
+            *tck
+        } else {
+            let key = self.new_term_key();
+            *self.variables.entry(var.clone()).or_insert(key)
+        }
     }
 
     /// Imposes `constr` on the current state of the type checking procedure. This may or may not change the abstract

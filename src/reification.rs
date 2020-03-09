@@ -1,5 +1,5 @@
 use crate::type_checker::TypeChecker;
-use crate::type_checker::{AbstractType, TypeCheckKey};
+use crate::type_checker::{AbstractType, TCVar, TypeCheckKey};
 use ena::unify::UnifyKey;
 
 /// Indicates that an abstract type could not be reified because it is too general or too restrictive.
@@ -51,7 +51,7 @@ pub trait Generalizable {
     fn generalize(&self) -> Self::Generalized;
 }
 
-impl<Key: UnifyKey> TypeChecker<Key>
+impl<Key: UnifyKey, Var: TCVar> TypeChecker<Key, Var>
 where
     Key::Value: AbstractType + TryReifiable,
 {
@@ -63,7 +63,7 @@ where
     }
 }
 
-impl<Key: UnifyKey> TypeChecker<Key>
+impl<Key: UnifyKey, Var: TCVar> TypeChecker<Key, Var>
 where
     Key::Value: AbstractType + Reifiable,
 {

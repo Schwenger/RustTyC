@@ -1,8 +1,9 @@
-use crate::type_checker::TypeChecker;
+use crate::type_checker::{TCVar, TypeChecker};
 use crate::{Generalizable, ReificationError, TryReifiable, TypeCheckKey};
 use ena::unify::{UnifyKey, UnifyValue};
 use std::cmp::max;
 use std::convert::TryInto;
+use std::hash::Hash;
 
 /// The key used for referencing objects with types.  Needs to implement `ena::UnifyKey`.
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -27,7 +28,13 @@ enum ConcreteType {
     Bool,
 }
 
+/// Won't be used.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+struct Variable(usize);
+
 // ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
+
+impl TCVar for Variable {}
 
 impl crate::type_checker::AbstractType for AbstractType {
     fn unconstrained() -> Self {
@@ -187,12 +194,12 @@ fn build_complex_expression_type_checks() -> Expression {
 /// It creates keys on the fly.  This is not possible for many kinds of type systems, in which case the functions
 /// requires a context with a mapping of e.g. Variable -> Key.  The context can be built during a first pass over the
 /// tree.
-fn tc_expr(
-    tc: &mut TypeChecker<Key>,
+fn tc_expr<Var: TCVar>(
+    tc: &mut TypeChecker<Key, Var>,
     expr: &Expression,
 ) -> Result<TypeCheckKey<Key>, <AbstractType as UnifyValue>::Error> {
     use Expression::*;
-    let key_result = tc.new_key(); // will be returned
+    let key_result = tc.new_term_key(); // will be returned
     match expr {
         ConstInt(c) => {
             let width = (128 - c.leading_zeros()).try_into().unwrap();
@@ -220,7 +227,7 @@ fn tc_expr(
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
             // would copy the keys rather than creating new ones.
             let params: Vec<(Option<AbstractType>, TypeCheckKey<Key>)> =
-                param_constraints.iter().map(|p| (*p, tc.new_key())).collect();
+                param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
             dbg!(&params);
             for (arg_ty, arg_expr) in args {
                 let arg_key = tc_expr(tc, arg_expr)?;
@@ -255,17 +262,17 @@ fn tc_expr(
 
 #[test]
 fn create_different_types() {
-    let mut tc: TypeChecker<Key> = TypeChecker::new();
-    let first = tc.new_key();
-    let second = tc.new_key();
+    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let first = tc.new_term_key();
+    let second = tc.new_term_key();
     assert_ne!(first, second);
 }
 
 #[test]
 fn bound_by_concrete_transitive() {
-    let mut tc: TypeChecker<Key> = TypeChecker::new();
-    let first = tc.new_key();
-    let second = tc.new_key();
+    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let first = tc.new_term_key();
+    let second = tc.new_term_key();
     assert!(tc.impose(second.bound_by_concrete(ConcreteType::Int128)).is_ok());
     assert!(tc.impose(first.more_concrete_than(second)).is_ok());
     assert_eq!(tc.get_type(first), tc.get_type(second));
@@ -274,7 +281,7 @@ fn bound_by_concrete_transitive() {
 #[test]
 fn complex_type_check() {
     let expr = build_complex_expression_type_checks();
-    let mut tc: TypeChecker<Key> = TypeChecker::new();
+    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
     let res = tc_expr(&mut tc, &expr);
     match res {
         Ok(key) => {
@@ -290,7 +297,7 @@ fn complex_type_check() {
 #[test]
 fn failing_type_check() {
     let expr = build_type_error();
-    let mut tc: TypeChecker<Key> = TypeChecker::new();
+    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
     // Expression `4.3 + false` should yield an error.
     let res = tc_expr(&mut tc, &expr);
     match res {
@@ -300,4 +307,18 @@ fn failing_type_check() {
         }
         Err(_) => {}
     }
+}
+
+#[test]
+fn test_variable_dedup() {
+    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let var_a = tc.new_var_key(&Variable(0));
+    let term = tc.new_term_key();
+    let var_b = tc.new_var_key(&Variable(1));
+    let var_a_2 = tc.new_var_key(&Variable(0));
+    assert_eq!(var_a, var_a_2);
+    assert_ne!(var_a, term);
+    assert_ne!(var_a, var_b);
+    assert_ne!(term, var_b);
+    // The rest of the comparisons are covered by the first equivalence check.
 }
