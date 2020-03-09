@@ -228,12 +228,12 @@ fn tc_expr<Var: TCVar>(
             // would copy the keys rather than creating new ones.
             let params: Vec<(Option<AbstractType>, TypeCheckKey<Key>)> =
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
-            dbg!(&params);
+            &params;
             for (arg_ty, arg_expr) in args {
                 let arg_key = tc_expr(tc, arg_expr)?;
-                match dbg!(arg_ty) {
+                match arg_ty {
                     ParamType::ParamId(id) => {
-                        let (p_constr, p_key) = dbg!(params[*id]);
+                        let (p_constr, p_key) = params[*id];
                         // We need to enforce that the parameter is more concrete than the passed argument and that the
                         // passed argument satisfies the constraints imposed on the parametric type.
                         tc.impose(p_key.more_concrete_than(arg_key))?;
