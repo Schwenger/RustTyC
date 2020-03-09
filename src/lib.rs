@@ -3,33 +3,35 @@
 //! internally to successively constrain types.
 //!
 //! The main component is the `TypeChecker` struct, which is parametrized by a `Key` that implements the `ena::UnifyKey`
-//! trait.  This trait in-turn requires an implementation of `EnaValue` and `type_checker::AbstractValue`.
+//! trait.  This trait in-turn requires an implementation of `EnaValue` and `type_checker::Abstract`.
 //! The `TypeChecker` manages a set of abstract types in a lattice-like structure and perform a union-find procedure to
 //! derive the least concrete abstract type that satisfies a defined set of constraints.
 //! Each abstract type is referred to with a key assigned by the `TypeChecker` (refer to
-//! `TypeChecker::new_key(&mut self)`).
+//! `TypeChecker::new_term_key(&mut self)` and `TypeChecker::new_var_key(&mut self, var: Var)`.
 //!
 //! # Usage
-//! The `TypeChecker` requires two types: `Key` and `AbstractType`.
+//! The `TypeChecker` requires three types: `Key`, `AbstractType`, and `Variable`.
 //! `Key` needs to implement `EnaKey`, which has an associated type `EnaKey::Value` that is the `AbstractType`.
 //! Most of the time, the key is simply a `u32` in disguise.
 //! The abstract type needs to implement `EnaValue` providing an abstract "meet" or "unification" function, and
-//! `type_check::AbstractType`.
+//! `rusttyc::Abstract`.
+//! Lastly, `Variable` represents a re-usable variable during the type checking procedure and needs to implement
+//! `rusttyc::TcVar`.
 //! ```
-//! use rusttyc::{ TypeCheckKey, TypeChecker, EnaValue, EnaKey };
+//! use rusttyc::{ TcKey, TypeChecker, EnaValue, EnaKey };
 //! use ena::unify::UnifyValue;
 //! #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 //! struct Key(u32);
 //! #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 //! struct Variable(u32);
-//! impl rusttyc::TCVar for Variable {}
+//! impl rusttyc::TcVar for Variable {}
 //! #[derive(Debug, PartialEq, Eq, Clone)]
 //! enum AbstractType {
 //!     Variant1,
 //!     Unconstrained,
 //!     /* ... */
 //! }
-//! impl rusttyc::AbstractType for AbstractType {
+//! impl rusttyc::Abstract for AbstractType {
 //!     fn unconstrained() -> Self {
 //!         Self::Unconstrained
 //!     }
@@ -83,7 +85,7 @@ mod reification;
 mod tests;
 mod type_checker;
 
-pub use constraints::TypeConstraint;
+pub use constraints::Constraint;
 pub use ena::unify::{UnifyKey as EnaKey, UnifyValue as EnaValue};
 pub use reification::{Generalizable, Reifiable, ReificationError, TryReifiable};
-pub use type_checker::{AbstractType, TCVar, TypeCheckKey, TypeChecker};
+pub use type_checker::{Abstract, TcVar, TcKey, TypeChecker};

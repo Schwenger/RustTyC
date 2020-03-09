@@ -1,5 +1,5 @@
 use crate::type_checker::TypeChecker;
-use crate::type_checker::{AbstractType, TCVar, TypeCheckKey};
+use crate::type_checker::{Abstract, TcVar, TcKey};
 use ena::unify::UnifyKey;
 
 /// Indicates that an abstract type could not be reified because it is too general or too restrictive.
@@ -51,24 +51,24 @@ pub trait Generalizable {
     fn generalize(&self) -> Self::Generalized;
 }
 
-impl<Key: UnifyKey, Var: TCVar> TypeChecker<Key, Var>
+impl<Key: UnifyKey, Var: TcVar> TypeChecker<Key, Var>
 where
-    Key::Value: AbstractType + TryReifiable,
+    Key::Value: Abstract + TryReifiable,
 {
     /// Returns a mapping of all registered abstract type nodes to their reification.
     pub fn try_get_reified_type_table(
         &mut self,
-    ) -> Vec<(TypeCheckKey<Key>, Result<<Key::Value as TryReifiable>::Reified, ReificationError>)> {
+    ) -> Vec<(TcKey<Key>, Result<<Key::Value as TryReifiable>::Reified, ReificationError>)> {
         self.get_type_table().into_iter().map(|(key, value)| (key, value.try_reify())).collect()
     }
 }
 
-impl<Key: UnifyKey, Var: TCVar> TypeChecker<Key, Var>
+impl<Key: UnifyKey, Var: TcVar> TypeChecker<Key, Var>
 where
-    Key::Value: AbstractType + Reifiable,
+    Key::Value: Abstract + Reifiable,
 {
     /// Returns a mapping of all registered abstract type nodes to their reification.
-    pub fn get_reified_type_table(&mut self) -> Vec<(TypeCheckKey<Key>, <Key::Value as Reifiable>::Reified)> {
+    pub fn get_reified_type_table(&mut self) -> Vec<(TcKey<Key>, <Key::Value as Reifiable>::Reified)> {
         self.get_type_table().into_iter().map(|(key, value)| (key, value.reify())).collect()
     }
 }

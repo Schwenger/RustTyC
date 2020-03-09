@@ -1,4 +1,4 @@
-use rusttyc::{EnaKey, EnaValue, Generalizable, ReificationError, TryReifiable, TypeCheckKey, TypeChecker};
+use rusttyc::{EnaKey, EnaValue, Generalizable, ReificationError, TryReifiable, TcKey, TypeChecker};
 use std::cmp::max;
 use std::convert::TryInto;
 
@@ -31,10 +31,10 @@ struct Variable(usize);
 
 // ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
 
-impl rusttyc::TCVar for Variable {}
+impl rusttyc::TcVar for Variable {}
 
 // Merely requires `UpperBounded`.
-impl rusttyc::AbstractType for AbstractType {
+impl rusttyc::Abstract for AbstractType {
     fn unconstrained() -> Self {
         AbstractType::Any
     }
@@ -178,7 +178,7 @@ fn build_complex_expression_type_checks() -> Expression {
 fn tc_expr(
     tc: &mut TypeChecker<Key, Variable>,
     expr: &Expression,
-) -> Result<TypeCheckKey<Key>, <AbstractType as EnaValue>::Error> {
+) -> Result<TcKey<Key>, <AbstractType as EnaValue>::Error> {
     use Expression::*;
     let key_result = tc.new_term_key(); // will be returned
     match expr {
@@ -207,7 +207,7 @@ fn tc_expr(
         PolyFn { name: _, param_constraints, args, returns } => {
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
             // would copy the keys rather than creating new ones.
-            let params: Vec<(Option<AbstractType>, TypeCheckKey<Key>)> =
+            let params: Vec<(Option<AbstractType>, TcKey<Key>)> =
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
             dbg!(&params);
             for (arg_ty, arg_expr) in args {

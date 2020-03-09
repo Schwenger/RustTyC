@@ -1,5 +1,5 @@
-use crate::type_checker::{TCVar, TypeChecker};
-use crate::{Generalizable, ReificationError, TryReifiable, TypeCheckKey};
+use crate::type_checker::{TcVar, TypeChecker};
+use crate::{Generalizable, ReificationError, TryReifiable, TcKey};
 use ena::unify::{UnifyKey, UnifyValue};
 use std::cmp::max;
 use std::convert::TryInto;
@@ -34,9 +34,9 @@ struct Variable(usize);
 
 // ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
 
-impl TCVar for Variable {}
+impl TcVar for Variable {}
 
-impl crate::type_checker::AbstractType for AbstractType {
+impl crate::type_checker::Abstract for AbstractType {
     fn unconstrained() -> Self {
         AbstractType::Any
     }
@@ -194,10 +194,10 @@ fn build_complex_expression_type_checks() -> Expression {
 /// It creates keys on the fly.  This is not possible for many kinds of type systems, in which case the functions
 /// requires a context with a mapping of e.g. Variable -> Key.  The context can be built during a first pass over the
 /// tree.
-fn tc_expr<Var: TCVar>(
+fn tc_expr<Var: TcVar>(
     tc: &mut TypeChecker<Key, Var>,
     expr: &Expression,
-) -> Result<TypeCheckKey<Key>, <AbstractType as UnifyValue>::Error> {
+) -> Result<TcKey<Key>, <AbstractType as UnifyValue>::Error> {
     use Expression::*;
     let key_result = tc.new_term_key(); // will be returned
     match expr {
@@ -226,7 +226,7 @@ fn tc_expr<Var: TCVar>(
         PolyFn { name: _, param_constraints, args, returns } => {
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
             // would copy the keys rather than creating new ones.
-            let params: Vec<(Option<AbstractType>, TypeCheckKey<Key>)> =
+            let params: Vec<(Option<AbstractType>, TcKey<Key>)> =
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
             &params;
             for (arg_ty, arg_expr) in args {
@@ -238,7 +238,7 @@ fn tc_expr<Var: TCVar>(
                         // passed argument satisfies the constraints imposed on the parametric type.
                         tc.impose(p_key.more_concrete_than(arg_key))?;
                         if let Some(c) = p_constr {
-                            tc.impose(dbg!(arg_key).bound_by_abstract(c))?;
+                            tc.impose(arg_key.bound_by_abstract(c))?;
                             println!("Argument is of abstract type {:?}.", tc.get_type(arg_key));
                         }
                     }
