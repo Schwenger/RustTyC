@@ -13,7 +13,7 @@ use crate::type_checker::{Abstract, TcKey, TcVar};
 /// Note the subtle difference between `ReificationError::TooGeneral` and `ReificationError::Conflicting`:
 ///     + In the `Conflicting` case there is no valid counterpart
 ///     + In the `TooGeneral` case the counterpart is not defined or not unique but could exist.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ReificationError {
     /// Attempting to reify an abstract type with either no unique concrete counterpart or with no defined default
     /// reification value results in this error.
