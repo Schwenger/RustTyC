@@ -1,15 +1,10 @@
 use crate::type_checker::{TcVar, TypeChecker};
-use crate::{Generalizable, ReificationError, TryReifiable, TcKey};
-use ena::unify::{UnifyKey, UnifyValue};
+use crate::{Abstract, Generalizable, ReificationError, TcKey, TryReifiable};
 use std::cmp::max;
 use std::convert::TryInto;
 use std::hash::Hash;
 
-/// The key used for referencing objects with types.  Needs to implement `ena::UnifyKey`.
-#[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
-struct Key(u32);
-
-/// Represents abstract types.  Needs to implement `ena::UnifyValue`.
+/// Represents abstract types.  Needs to implement `rusttyc::Abstract`.
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
 enum AbstractType {
     Any,
@@ -36,26 +31,27 @@ struct Variable(usize);
 
 impl TcVar for Variable {}
 
-impl crate::type_checker::Abstract for AbstractType {
+impl Abstract for AbstractType {
+    type Error = ();
+
     fn unconstrained() -> Self {
         AbstractType::Any
     }
-}
 
-impl UnifyKey for Key {
-    type Value = AbstractType;
-
-    fn index(&self) -> u32 {
-        self.0
-    }
-
-    fn from_index(u: u32) -> Self {
-        Key(u)
-    }
-
-    /// Doesn't really matter.
-    fn tag() -> &'static str {
-        "Key"
+    fn meet(self, right: Self) -> Result<Self, Self::Error> {
+        use crate::tests::AbstractType::*;
+        match (self, right) {
+            (Any, other) | (other, Any) => Ok(other.clone()),
+            (Integer(l), Integer(r)) => Ok(Integer(max(r, l))),
+            (Fixed(li, lf), Fixed(ri, rf)) => Ok(Fixed(max(li, ri), max(lf, rf))),
+            (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) if f == 0 => Ok(Integer(max(i, u))),
+            (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) => Ok(Fixed(max(i, u), f)),
+            (Bool, Bool) => Ok(Bool),
+            (Bool, _) | (_, Bool) => Err(()),
+            (Numeric, Integer(w)) | (Integer(w), Numeric) => Ok(Integer(w)),
+            (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
+            (Numeric, Numeric) => Ok(Numeric),
+        }
     }
 }
 
@@ -94,27 +90,6 @@ enum Expression {
     ConstInt(i128),
     ConstBool(bool),
     ConstFixed(i64, u64),
-}
-
-impl UnifyValue for AbstractType {
-    type Error = ();
-
-    /// Returns the meet of two abstract types.  Returns `Err` if they are incompatible.
-    fn unify_values(left: &Self, right: &Self) -> Result<Self, <AbstractType as UnifyValue>::Error> {
-        use crate::tests::AbstractType::*;
-        match (left, right) {
-            (Any, other) | (other, Any) => Ok(other.clone()),
-            (Integer(l), Integer(r)) => Ok(Integer(max(*r, *l))),
-            (Fixed(li, lf), Fixed(ri, rf)) => Ok(Fixed(max(*li, *ri), max(*lf, *rf))),
-            (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) if *f == 0 => Ok(Integer(max(*i, *u))),
-            (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) => Ok(Fixed(max(*i, *u), *f)),
-            (Bool, Bool) => Ok(Bool),
-            (Bool, _) | (_, Bool) => Err(()),
-            (Numeric, Integer(w)) | (Integer(w), Numeric) => Ok(Integer(*w)),
-            (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(*i, *f)),
-            (Numeric, Numeric) => Ok(Numeric),
-        }
-    }
 }
 
 impl TryReifiable for AbstractType {
@@ -194,10 +169,8 @@ fn build_complex_expression_type_checks() -> Expression {
 /// It creates keys on the fly.  This is not possible for many kinds of type systems, in which case the functions
 /// requires a context with a mapping of e.g. Variable -> Key.  The context can be built during a first pass over the
 /// tree.
-fn tc_expr<Var: TcVar>(
-    tc: &mut TypeChecker<Key, Var>,
-    expr: &Expression,
-) -> Result<TcKey<Key>, <AbstractType as UnifyValue>::Error> {
+fn tc_expr<Var: TcVar>(tc: &mut TypeChecker<AbstractType, Var>, expr: &Expression) -> Result<TcKey<AbstractType>, ()> {
+    // TODO: ERROR TYPE
     use Expression::*;
     let key_result = tc.new_term_key(); // will be returned
     match expr {
@@ -226,7 +199,7 @@ fn tc_expr<Var: TcVar>(
         PolyFn { name: _, param_constraints, args, returns } => {
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
             // would copy the keys rather than creating new ones.
-            let params: Vec<(Option<AbstractType>, TcKey<Key>)> =
+            let params: Vec<(Option<AbstractType>, TcKey<AbstractType>)> =
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
             &params;
             for (arg_ty, arg_expr) in args {
@@ -262,7 +235,7 @@ fn tc_expr<Var: TcVar>(
 
 #[test]
 fn create_different_types() {
-    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
     let first = tc.new_term_key();
     let second = tc.new_term_key();
     assert_ne!(first, second);
@@ -270,7 +243,7 @@ fn create_different_types() {
 
 #[test]
 fn bound_by_concrete_transitive() {
-    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
     let first = tc.new_term_key();
     let second = tc.new_term_key();
     assert!(tc.impose(second.bound_by_concrete(ConcreteType::Int128)).is_ok());
@@ -281,7 +254,7 @@ fn bound_by_concrete_transitive() {
 #[test]
 fn complex_type_check() {
     let expr = build_complex_expression_type_checks();
-    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
     let res = tc_expr(&mut tc, &expr);
     match res {
         Ok(key) => {
@@ -297,7 +270,7 @@ fn complex_type_check() {
 #[test]
 fn failing_type_check() {
     let expr = build_type_error();
-    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
     // Expression `4.3 + false` should yield an error.
     let res = tc_expr(&mut tc, &expr);
     match res {
@@ -311,7 +284,7 @@ fn failing_type_check() {
 
 #[test]
 fn test_variable_dedup() {
-    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
     let var_a = tc.new_var_key(&Variable(0));
     let term = tc.new_term_key();
     let var_b = tc.new_var_key(&Variable(1));

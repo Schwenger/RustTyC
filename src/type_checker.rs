@@ -5,6 +5,7 @@ use ena::unify::{
 use std::collections::HashMap;
 use std::fmt::{Debug, Error, Formatter};
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::slice::Iter;
 
 /// Represents a type checker.
@@ -16,20 +17,14 @@ use std::slice::Iter;
 /// The `TypeChecker` allows for the creation of keys and imposition of constraints on them,
 /// refer to `TypeChecker::new_{term/var}_key(&mut self)` and
 /// `TypeChecker::impose(&mut self, constr: Constraint<Key>)`, respectively.
-pub struct TypeChecker<Key: EnaKey, Var: TcVar>
-where
-    Key::Value: Abstract,
-{
-    store: InPlaceUnificationTable<Key>,
-    keys: Vec<TcKey<Key>>,
-    snapshots: Vec<Snapshot<InPlace<Key>>>,
-    variables: HashMap<Var, TcKey<Key>>,
+pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
+    store: InPlaceUnificationTable<TcKey<AbsTy>>,
+    keys: Vec<TcKey<AbsTy>>,
+    snapshots: Vec<Snapshot<InPlace<TcKey<AbsTy>>>>,
+    variables: HashMap<Var, TcKey<AbsTy>>,
 }
 
-impl<Key: EnaKey, Var: TcVar> Debug for TypeChecker<Key, Var>
-where
-    Key::Value: Abstract,
-{
+impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
@@ -48,15 +43,43 @@ pub trait TcVar: Eq + Hash + Clone {}
 /// A `TcKey` references an abstract type object during the type checking procedure.
 /// It can be created via `TypeChecker::new_{term/var}_ key` and provides functions creating `Constraint`s that
 /// impose rules on type variables, e.g. by constraining single types are relating others.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TcKey<Key: EnaKey>(Key)
-where
-    Key::Value: Abstract;
+#[derive(Debug, Clone, PartialEq)]
+pub struct TcKey<Val: Abstract> {
+    ix: u32,
+    phantom: PhantomData<Val>,
+}
+
+impl<Val: Abstract> TcKey<Val> {
+    pub(crate) fn new(ix: u32) -> TcKey<Val> {
+        TcKey { ix, phantom: PhantomData }
+    }
+}
+
+impl<Val: Abstract> Copy for TcKey<Val> {}
+
+impl<Val: Abstract> EnaKey for TcKey<Val> {
+    type Value = TcValue<Val>;
+
+    fn index(&self) -> u32 {
+        self.ix
+    }
+
+    fn from_index(u: u32) -> Self {
+        TcKey::new(u)
+    }
+
+    fn tag() -> &'static str {
+        "TypeCheckKey"
+    }
+}
 
 /// The main trait representing types throughout the type checking procedure.
 /// It is bound to the type checker as the `Value` for the `Key` parameter.  As such, it needs to implement
 /// `EnaValue`.
-pub trait Abstract: Eq + Sized {
+pub trait Abstract: Eq + Sized + Clone + Debug {
+    /// Represents an error during the meet of two abstract types.
+    type Error;
+
     /// Returns an unconstrained abstract type.
     fn unconstrained() -> Self;
 
@@ -64,22 +87,47 @@ pub trait Abstract: Eq + Sized {
     fn is_unconstrained(&self) -> bool {
         self == &Self::unconstrained()
     }
+
+    /// Computes the meet of two abstract values.
+    fn meet(self, other: Self) -> Result<Self, Self::Error>;
 }
 
-impl<Key: EnaKey, Var: TcVar> Default for TypeChecker<Key, Var>
-where
-    Key::Value: Abstract,
-{
+impl<A: Abstract> From<A> for TcValue<A> {
+    fn from(a: A) -> Self {
+        TcValue(a)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TcValue<A: Abstract>(A);
+
+impl<A: Abstract> Abstract for TcValue<A> {
+    type Error = A::Error;
+
+    fn unconstrained() -> Self {
+        TcValue(A::unconstrained())
+    }
+    fn meet(self, other: Self) -> Result<Self, Self::Error> {
+        self.0.meet(other.0).map(TcValue)
+    }
+}
+
+impl<A: Abstract> EnaValue for TcValue<A> {
+    type Error = A::Error;
+
+    fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
+        value1.clone().meet(value2.clone())
+    }
+}
+
+impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
     fn default() -> Self {
         TypeChecker::new()
     }
 }
 
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
-impl<Key: EnaKey, Var: TcVar> TypeChecker<Key, Var>
-where
-    Key::Value: Abstract,
-{
+impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// Creates a new, empty `TypeChecker`.  
     pub fn new() -> Self {
         TypeChecker {
@@ -92,9 +140,9 @@ where
 
     /// Returns a view on the current state of `self`.  Returns a mapping of all keys known to
     /// `self` to the `Key::Value` associated with it.
-    pub fn get_type_table(&mut self) -> Vec<(TcKey<Key>, Key::Value)> {
+    pub fn get_type_table(&mut self) -> Vec<(TcKey<AbsTy>, AbsTy)> {
         let keys = self.keys.clone();
-        keys.into_iter().map(|key| key).map(|key| (key, self.get_type(key))).collect()
+        keys.into_iter().map(|key| (key, self.get_type(key))).collect()
     }
 
     /// Creates a new unconstrained variable that can be referred to using the returned
@@ -104,8 +152,8 @@ where
     /// `TcKey` provides means to create such `Constraints`.
     /// This key ought to represent a non-reusable term rather than a variable; refer to
     /// `TypeChecker::new_var_key(Var)`.
-    pub fn new_term_key(&mut self) -> TcKey<Key> {
-        let new = TcKey(self.store.new_key(<Key::Value as Abstract>::unconstrained()));
+    pub fn new_term_key(&mut self) -> TcKey<AbsTy> {
+        let new = TcKey::new(self.store.new_key(TcValue::unconstrained()).ix);
         self.keys.push(new);
         new
     }
@@ -117,7 +165,7 @@ where
     /// `TcKey` provides means to create such `Constraints`.
     /// This key ought to represent a reusable variable rather than a term; refer to
     /// `TypeChecker::new_term_key()`.
-    pub fn new_var_key(&mut self, var: &Var) -> TcKey<Key> {
+    pub fn new_var_key(&mut self, var: &Var) -> TcKey<AbsTy> {
         // Avoid cloning `var` by forgoing the `entry` function if possible.
         if let Some(tck) = self.variables.get(var) {
             *tck
@@ -132,20 +180,18 @@ where
     /// This process might entail that several values need to be met.  The evaluation is lazy, i.e. it stops the
     /// entire process as soon as a single meet fails, leaving all other meet operations unattempted.  This potentially
     /// shadows additional type errors!
-    pub fn impose(&mut self, constr: Constraint<Key>) -> Result<(), <Key::Value as EnaValue>::Error> {
+    pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), AbsTy::Error> {
         use Constraint::*;
         match constr {
             MoreConcreteThanAll { target, args } => {
                 // Look-up all constrains of args, bound `target` by each.
                 for arg in args {
-                    self.store.unify_var_var(target.0, arg.0)?;
+                    self.store.unify_var_var(target, arg)?;
                 }
             }
             MoreConcreteThanType { target, args } => {
                 for bound in args {
-                    dbg!(self.get_type(target));
-                    dbg!(&bound);
-                    self.store.unify_var_value(target.0, bound)?;
+                    self.store.unify_var_value(target, bound.into())?;
                 }
             }
         }
@@ -153,12 +199,12 @@ where
     }
 
     /// Returns the abstract type associated with `key`.
-    pub fn get_type(&mut self, key: TcKey<Key>) -> Key::Value {
-        self.store.probe_value(key.0)
+    pub fn get_type(&mut self, key: TcKey<AbsTy>) -> AbsTy {
+        self.store.probe_value(key).0
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
-    pub fn keys(&self) -> Iter<TcKey<Key>> {
+    pub fn keys(&self) -> Iter<TcKey<AbsTy>> {
         self.keys.iter()
     }
 
@@ -174,7 +220,7 @@ where
     /// `TypeChecker::rollback_to(&mut self, Snapshot<...>)` and committed via
     /// `TypeChecker::commit_to(&mut self, Snapshot<...>)`.
     /// When external management is undesired or unnecessary, refer to `TypeChecker::snapshot(&mut self)`.
-    pub fn take_snapshot(&mut self) -> Snapshot<InPlace<Key>> {
+    pub fn take_snapshot(&mut self) -> Snapshot<InPlace<TcKey<AbsTy>>> {
         self.store.snapshot()
     }
 
@@ -187,7 +233,7 @@ where
 
     /// Commits to `snapshot`.
     /// For committing to the last snapshot taken, refer to `TypeChecker::commit_last_ss(&mut self)`.
-    pub fn commit_to(&mut self, snapshot: Snapshot<InPlace<Key>>) {
+    pub fn commit_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
         self.store.commit(snapshot);
     }
 
@@ -200,7 +246,7 @@ where
 
     /// Rolls back to `snapshot`.
     /// For rolling back to the last snapshot taken, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
-    pub fn rollback_to(&mut self, snapshot: Snapshot<InPlace<Key>>) {
+    pub fn rollback_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
         self.store.rollback_to(snapshot)
     }
 }

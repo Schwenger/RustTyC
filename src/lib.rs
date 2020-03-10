@@ -88,4 +88,4 @@ mod type_checker;
 pub use constraints::Constraint;
 pub use ena::unify::{UnifyKey as EnaKey, UnifyValue as EnaValue};
 pub use reification::{Generalizable, Reifiable, ReificationError, TryReifiable};
-pub use type_checker::{Abstract, TcVar, TcKey, TypeChecker};
+pub use type_checker::{Abstract, TcKey, TcVar, TypeChecker};

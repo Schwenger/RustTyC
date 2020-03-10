@@ -1,4 +1,4 @@
-use rusttyc::{EnaKey, EnaValue, Generalizable, ReificationError, TryReifiable, TcKey, TypeChecker};
+use rusttyc::{Generalizable, ReificationError, TcKey, TryReifiable, TypeChecker};
 use std::cmp::max;
 use std::convert::TryInto;
 
@@ -33,27 +33,27 @@ struct Variable(usize);
 
 impl rusttyc::TcVar for Variable {}
 
-// Merely requires `UpperBounded`.
 impl rusttyc::Abstract for AbstractType {
+    type Error = ();
+
     fn unconstrained() -> Self {
         AbstractType::Any
     }
-}
 
-impl EnaKey for Key {
-    type Value = AbstractType;
-
-    fn index(&self) -> u32 {
-        self.0
-    }
-
-    fn from_index(u: u32) -> Self {
-        Key(u)
-    }
-
-    /// Doesn't really matter.
-    fn tag() -> &'static str {
-        "Key"
+    fn meet(self, other: Self) -> Result<Self, Self::Error> {
+        use crate::AbstractType::*;
+        match (self, other) {
+            (Any, other) | (other, Any) => Ok(other.clone()),
+            (Integer(l), Integer(r)) => Ok(Integer(max(r, l))),
+            (Fixed(li, lf), Fixed(ri, rf)) => Ok(Fixed(max(li, ri), max(lf, rf))),
+            (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) if f == 0 => Ok(Integer(max(i, u))),
+            (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) => Ok(Fixed(max(i, u), f)),
+            (Bool, Bool) => Ok(Bool),
+            (Bool, _) | (_, Bool) => Err(()),
+            (Numeric, Integer(w)) | (Integer(w), Numeric) => Ok(Integer(w)),
+            (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
+            (Numeric, Numeric) => Ok(Numeric),
+        }
     }
 }
 
@@ -92,27 +92,6 @@ enum Expression {
     ConstInt(i128),
     ConstBool(bool),
     ConstFixed(i64, u64),
-}
-
-impl EnaValue for AbstractType {
-    type Error = ();
-
-    /// Returns the meet of two abstract types.  Returns `Err` if they are incompatible.
-    fn unify_values(left: &Self, right: &Self) -> Result<Self, <AbstractType as EnaValue>::Error> {
-        use AbstractType::*;
-        match (left, right) {
-            (Any, other) | (other, Any) => Ok(other.clone()),
-            (Integer(l), Integer(r)) => Ok(Integer(max(*r, *l))),
-            (Fixed(li, lf), Fixed(ri, rf)) => Ok(Fixed(max(*li, *ri), max(*lf, *rf))),
-            (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) if *f == 0 => Ok(Integer(max(*i, *u))),
-            (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) => Ok(Fixed(max(*i, *u), *f)),
-            (Bool, Bool) => Ok(Bool),
-            (Bool, _) | (_, Bool) => Err(()),
-            (Numeric, Integer(w)) | (Integer(w), Numeric) => Ok(Integer(*w)),
-            (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(*i, *f)),
-            (Numeric, Numeric) => Ok(Numeric),
-        }
-    }
 }
 
 impl TryReifiable for AbstractType {
@@ -176,9 +155,9 @@ fn build_complex_expression_type_checks() -> Expression {
 /// requires a context with a mapping of e.g. Variable -> Key.  The context can be built during a first pass over the
 /// tree.
 fn tc_expr(
-    tc: &mut TypeChecker<Key, Variable>,
+    tc: &mut TypeChecker<AbstractType, Variable>,
     expr: &Expression,
-) -> Result<TcKey<Key>, <AbstractType as EnaValue>::Error> {
+) -> Result<TcKey<AbstractType>, <AbstractType as rusttyc::Abstract>::Error> {
     use Expression::*;
     let key_result = tc.new_term_key(); // will be returned
     match expr {
@@ -207,7 +186,7 @@ fn tc_expr(
         PolyFn { name: _, param_constraints, args, returns } => {
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
             // would copy the keys rather than creating new ones.
-            let params: Vec<(Option<AbstractType>, TcKey<Key>)> =
+            let params: Vec<(Option<AbstractType>, TcKey<AbstractType>)> =
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
             dbg!(&params);
             for (arg_ty, arg_expr) in args {
@@ -245,7 +224,7 @@ fn main() {
     // Build an expression to type-check.
     let expr = build_complex_expression_type_checks();
     // Create an empty type checker.
-    let mut tc: TypeChecker<Key, Variable> = TypeChecker::new();
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
     // Type check the expression.
     let res = tc_expr(&mut tc, &expr);
     match res {
