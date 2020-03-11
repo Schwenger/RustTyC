@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - Leftover `dgb!`s.
+- Ena types from public API.
 
 ### Rename
 - `TypeChecker::new_key(&mut self) -> TypeCheckKey` has been renamed to `TypeChecker::new_term_key(&mut self) -> TypeCheckKey` to distinguish it from the newly added `TypeChecker::new_var_key(&mut self, var: Var) -> TypeCheckKey`.
