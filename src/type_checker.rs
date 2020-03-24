@@ -22,6 +22,7 @@ pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
     snapshots: Vec<Snapshot<InPlace<TcKey<AbsTy>>>>,
     variables: HashMap<Var, TcKey<AbsTy>>,
     monads: Vec<TcMonad<AbsTy>>,
+    constraints: Vec<Constraint<AbsTy>>,
 }
 
 impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
@@ -86,6 +87,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             snapshots: Vec::new(),
             variables: HashMap::new(),
             monads: Vec::new(),
+            constraints: Vec::new(),
         }
     }
     //
@@ -137,22 +139,8 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// This process might entail that several values need to be met.  The evaluation is lazy, i.e. it stops the
     /// entire process as soon as a single meet fails, leaving all other meet operations unattempted.  This potentially
     /// shadows additional type errors!
-    pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), AbsTy::Error> {
-        use Constraint::*;
-        match constr {
-            MoreConcreteThanAll { target, args } => {
-                // Look-up all constrains of args, bound `target` by each.
-                for arg in args {
-                    self.store.unify_var_var(target, arg)?;
-                }
-            }
-            MoreConcreteThanType { target, args } => {
-                for bound in args {
-                    self.store.unify_var_value(target, bound.into())?;
-                }
-            }
-        }
-        Ok(())
+    pub fn impose(&mut self, constr: Constraint<AbsTy>) {
+        self.constraints.push(constr);
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
@@ -160,29 +148,29 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
         self.keys.iter()
     }
 
-    /// Commits to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
-    /// For committing to a specific snapshot, refer to `TypeChecker::commit_to(&mut self, Snapshot<...>)`.
-    pub fn commit_last_ss(&mut self) {
-        let latest = self.snapshots.pop().expect("Cannot commit to a snapshot without taking one.");
-        self.store.commit(latest);
-    }
-
-    /// Commits to `snapshot`.
-    /// For committing to the last snapshot taken, refer to `TypeChecker::commit_last_ss(&mut self)`.
-    pub fn commit_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
-        self.store.commit(snapshot);
-    }
-
-    /// Rolls back to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
-    /// For rolling back to a specific snapshot, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
-    pub fn rollback_to_last_ss(&mut self) {
-        let latest = self.snapshots.pop().expect("Cannot roll back to a snapshot without taking one.");
-        self.store.rollback_to(latest)
-    }
-
-    /// Rolls back to `snapshot`.
-    /// For rolling back to the last snapshot taken, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
-    pub fn rollback_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
-        self.store.rollback_to(snapshot)
-    }
+    // /// Commits to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
+    // /// For committing to a specific snapshot, refer to `TypeChecker::commit_to(&mut self, Snapshot<...>)`.
+    // pub fn commit_last_ss(&mut self) {
+    //     let latest = self.snapshots.pop().expect("Cannot commit to a snapshot without taking one.");
+    //     self.store.commit(latest);
+    // }
+    //
+    // /// Commits to `snapshot`.
+    // /// For committing to the last snapshot taken, refer to `TypeChecker::commit_last_ss(&mut self)`.
+    // pub fn commit_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
+    //     self.store.commit(snapshot);
+    // }
+    //
+    // /// Rolls back to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
+    // /// For rolling back to a specific snapshot, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
+    // pub fn rollback_to_last_ss(&mut self) {
+    //     let latest = self.snapshots.pop().expect("Cannot roll back to a snapshot without taking one.");
+    //     self.store.rollback_to(latest)
+    // }
+    //
+    // /// Rolls back to `snapshot`.
+    // /// For rolling back to the last snapshot taken, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
+    // pub fn rollback_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
+    //     self.store.rollback_to(snapshot)
+    // }
 }

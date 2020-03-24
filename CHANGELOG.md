@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Start a changelog documenting all relevant changes throughout versions.
 - Mechanism for managing keys representing variables (`rusttyc::TcVar`) inside RustTyC rather than requiring the user to do so.
 - Variadic keys and TypeVariants
-- 
+- Revised interface for constraints
 
 ### Fixed
 - Some outdated documentation.
