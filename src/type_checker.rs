@@ -21,6 +21,7 @@ pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
     keys: Vec<TcKey<AbsTy>>,
     snapshots: Vec<Snapshot<InPlace<TcKey<AbsTy>>>>,
     variables: HashMap<Var, TcKey<AbsTy>>,
+    monads: Vec<TcMonad<AbsTy>>,
 }
 
 impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
@@ -84,6 +85,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             keys: Vec::new(),
             snapshots: Vec::new(),
             variables: HashMap::new(),
+            monads: Vec::new(),
         }
     }
     //
@@ -125,7 +127,9 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     }
 
     pub fn new_monad_key(&mut self, variant: AbsTy::Variant) -> TcMonad<AbsTy> {
-        TcMonad::new(self.new_term_key(), self.new_term_key(), variant)
+        let res = TcMonad::new(self.new_term_key(), self.new_term_key(), variant);
+        self.monads.push(res);
+        res
     }
 
     /// Imposes `constr` on the current state of the type checking procedure. This may or may not change the abstract
@@ -154,22 +158,6 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// Returns an iterator over all keys currently present in the type checking procedure.
     pub fn keys(&self) -> Iter<TcKey<AbsTy>> {
         self.keys.iter()
-    }
-
-    /// Takes a snapshot and stores it internally.  Can be rolled back via `TypeChecker::rollback(&mut self)` and committed via
-    /// `TypeChecker::commit_last_ss(&mut self)`.
-    /// When external access to the snapshot is desired or necessary, refer to
-    /// `TypeChecker::take_snapshot(&mut self) -> Snapshot<...>`.
-    pub fn snapshot(&mut self) {
-        self.snapshots.push(self.store.snapshot());
-    }
-
-    /// Takes and returns a snapshot that needs to be managed externally.  Can be rolled back via
-    /// `TypeChecker::rollback_to(&mut self, Snapshot<...>)` and committed via
-    /// `TypeChecker::commit_to(&mut self, Snapshot<...>)`.
-    /// When external management is undesired or unnecessary, refer to `TypeChecker::snapshot(&mut self)`.
-    pub fn take_snapshot(&mut self) -> Snapshot<InPlace<TcKey<AbsTy>>> {
-        self.store.snapshot()
     }
 
     /// Commits to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.

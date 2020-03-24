@@ -26,12 +26,14 @@ pub trait TypeVariant: Clone + Copy + PartialEq + Eq {
     fn arity(self) -> u8;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TcMonad<AbsTy: Abstract> {
     _this: TcKey<AbsTy>,
     _child: TcKey<AbsTy>,
     _variant: AbsTy::Variant,
 }
+
+impl<AbsTy: Abstract> Copy for TcMonad<AbsTy> {}
 
 impl<AbsTy: Abstract> TcMonad<AbsTy> {
     pub fn new(this: TcKey<AbsTy>, child: TcKey<AbsTy>, variant: AbsTy::Variant) -> Self {
