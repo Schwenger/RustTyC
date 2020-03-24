@@ -68,7 +68,7 @@
 //! For a full example, refer to the example directory.
 
 #![deny(
-    missing_docs,
+    // missing_docs,
     missing_debug_implementations,
     missing_copy_implementations,
     trivial_casts,
@@ -80,12 +80,15 @@
 )]
 
 mod constraints;
+mod keys;
 mod reification;
 #[cfg(test)]
 mod tests;
 mod type_checker;
+mod types;
 
 pub use constraints::Constraint;
-pub use ena::unify::{UnifyKey as EnaKey, UnifyValue as EnaValue};
+pub use keys::TcKey;
 pub use reification::{Generalizable, Reifiable, ReificationError, TryReifiable};
-pub use type_checker::{Abstract, TcKey, TcVar, TypeChecker};
+pub use type_checker::{TcVar, TypeChecker};
+pub use types::{Abstract, TcMonad, TypeVariant};

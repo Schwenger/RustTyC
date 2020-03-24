@@ -1,5 +1,4 @@
-use crate::type_checker::{Abstract, TcKey};
-use crate::Generalizable;
+use crate::{Abstract, Generalizable, TcKey};
 
 /// Represents a constraint on one or several abstract types referred to by `TcKey`s.
 /// Rather than creating these constraints directly, `TcKey` provides several convenient functions for this

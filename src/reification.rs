@@ -1,6 +1,3 @@
-use crate::type_checker::TypeChecker;
-use crate::type_checker::{Abstract, TcKey, TcVar};
-
 /// Indicates that an abstract type could not be reified because it is too general or too restrictive.
 /// # Example
 /// 1. A numeric type cannot be reified into any concrete value because the concrete counterpart could be a natural
@@ -50,18 +47,18 @@ pub trait Generalizable {
     fn generalize(&self) -> Self::Generalized;
 }
 
-impl<AbsTy: Abstract + TryReifiable, Var: TcVar> TypeChecker<AbsTy, Var> {
-    /// Returns a mapping of all registered abstract type nodes to their reification.
-    pub fn try_get_reified_type_table(
-        &mut self,
-    ) -> Vec<(TcKey<AbsTy>, Result<<AbsTy as TryReifiable>::Reified, ReificationError>)> {
-        self.get_type_table().into_iter().map(|(key, value)| (key, value.try_reify())).collect()
-    }
-}
+// impl<AbsTy: Abstract + TryReifiable, Var: TcVar> TypeChecker<AbsTy, Var> {
+//     /// Returns a mapping of all registered abstract type nodes to their reification.
+//     pub fn try_get_reified_type_table(
+//         &mut self,
+//     ) -> Vec<(TcKey<AbsTy>, Result<<AbsTy as TryReifiable>::Reified, ReificationError>)> {
+//         self.get_type_table().into_iter().map(|(key, value)| (key, value.try_reify())).collect()
+//     }
+// }
 
-impl<AbsTy: Abstract + Reifiable, Var: TcVar> TypeChecker<AbsTy, Var> {
-    /// Returns a mapping of all registered abstract type nodes to their reification.
-    pub fn get_reified_type_table(&mut self) -> Vec<(TcKey<AbsTy>, <AbsTy as Reifiable>::Reified)> {
-        self.get_type_table().into_iter().map(|(key, value)| (key, value.reify())).collect()
-    }
-}
+// impl<AbsTy: Abstract + Reifiable, Var: TcVar> TypeChecker<AbsTy, Var> {
+//     /// Returns a mapping of all registered abstract type nodes to their reification.
+//     pub fn get_reified_type_table(&mut self) -> Vec<(TcKey<AbsTy>, <AbsTy as Reifiable>::Reified)> {
+//         self.get_type_table().into_iter().map(|(key, value)| (key, value.reify())).collect()
+//     }
+// }

@@ -1,11 +1,10 @@
+use crate::keys::TcKey;
+use crate::types::{Abstract, TcMonad};
 use crate::Constraint;
-use ena::unify::{
-    InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyKey as EnaKey, UnifyValue as EnaValue,
-};
+use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyValue as EnaValue};
 use std::collections::HashMap;
 use std::fmt::{Debug, Error, Formatter};
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::slice::Iter;
 
 /// Represents a type checker.
@@ -36,61 +35,15 @@ impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
     }
 }
 
+impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
+    fn default() -> Self {
+        TypeChecker::new()
+    }
+}
+
 /// Represents a re-usable variable in the type checking procedure.  TcKeys for variables will be managed by the
 /// `TypeChecker` to avoid duplication.
 pub trait TcVar: Eq + Hash + Clone {}
-
-/// A `TcKey` references an abstract type object during the type checking procedure.
-/// It can be created via `TypeChecker::new_{term/var}_ key` and provides functions creating `Constraint`s that
-/// impose rules on type variables, e.g. by constraining single types are relating others.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TcKey<Val: Abstract> {
-    ix: u32,
-    phantom: PhantomData<Val>,
-}
-
-impl<Val: Abstract> TcKey<Val> {
-    pub(crate) fn new(ix: u32) -> TcKey<Val> {
-        TcKey { ix, phantom: PhantomData }
-    }
-}
-
-impl<Val: Abstract> Copy for TcKey<Val> {}
-
-impl<Val: Abstract> EnaKey for TcKey<Val> {
-    type Value = TcValue<Val>;
-
-    fn index(&self) -> u32 {
-        self.ix
-    }
-
-    fn from_index(u: u32) -> Self {
-        TcKey::new(u)
-    }
-
-    fn tag() -> &'static str {
-        "TypeCheckKey"
-    }
-}
-
-/// The main trait representing types throughout the type checking procedure.
-/// It is bound to the type checker as the `Value` for the `Key` parameter.  As such, it needs to implement
-/// `EnaValue`.
-pub trait Abstract: Eq + Sized + Clone + Debug {
-    /// Represents an error during the meet of two abstract types.
-    type Error;
-
-    /// Returns an unconstrained abstract type.
-    fn unconstrained() -> Self;
-
-    /// Determines if an element is unconstrained.
-    fn is_unconstrained(&self) -> bool {
-        self == &Self::unconstrained()
-    }
-
-    /// Computes the meet of two abstract values.
-    fn meet(self, other: Self) -> Result<Self, Self::Error>;
-}
 
 impl<A: Abstract> From<A> for TcValue<A> {
     fn from(a: A) -> Self {
@@ -103,10 +56,12 @@ pub struct TcValue<A: Abstract>(A);
 
 impl<A: Abstract> Abstract for TcValue<A> {
     type Error = A::Error;
+    type Variant = A::Variant;
 
     fn unconstrained() -> Self {
         TcValue(A::unconstrained())
     }
+
     fn meet(self, other: Self) -> Result<Self, Self::Error> {
         self.0.meet(other.0).map(TcValue)
     }
@@ -117,12 +72,6 @@ impl<A: Abstract> EnaValue for TcValue<A> {
 
     fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
         value1.clone().meet(value2.clone())
-    }
-}
-
-impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
-    fn default() -> Self {
-        TypeChecker::new()
     }
 }
 
@@ -137,13 +86,13 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             variables: HashMap::new(),
         }
     }
-
-    /// Returns a view on the current state of `self`.  Returns a mapping of all keys known to
-    /// `self` to the `Key::Value` associated with it.
-    pub fn get_type_table(&mut self) -> Vec<(TcKey<AbsTy>, AbsTy)> {
-        let keys = self.keys.clone();
-        keys.into_iter().map(|key| (key, self.get_type(key))).collect()
-    }
+    //
+    // /// Returns a view on the current state of `self`.  Returns a mapping of all keys known to
+    // /// `self` to the `Key::Value` associated with it.
+    // pub fn get_type_table(&mut self) -> Vec<(TcKey<AbsTy>, AbsTy)> {
+    //     let keys = self.keys.clone();
+    //     keys.into_iter().map(|key| (key, self.get_type(key))).collect()
+    // }
 
     /// Creates a new unconstrained variable that can be referred to using the returned
     /// `TcKey`.  The current state of it can be accessed using
@@ -158,14 +107,14 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
         new
     }
 
-    /// Creates a new unconstrained variable that can be referred to using the returned
-    /// `TcKey`.  The current state of it can be accessed using
-    /// `TypeChecker::get_type(TcKey)` and constraints can be imposed using
-    /// `TypeChecker::impose(Constraint)`.
+    /// Returns a key that is associated with the passed variable.  If no such key exists, an
+    /// unconstrained key is created and returned.  Otherwise, the respective associated key
+    /// will be returned.
+    /// Constraints on the key can be imposed using `TypeChecker::impose(Constraint)`.
     /// `TcKey` provides means to create such `Constraints`.
     /// This key ought to represent a reusable variable rather than a term; refer to
     /// `TypeChecker::new_term_key()`.
-    pub fn new_var_key(&mut self, var: &Var) -> TcKey<AbsTy> {
+    pub fn get_var_key(&mut self, var: &Var) -> TcKey<AbsTy> {
         // Avoid cloning `var` by forgoing the `entry` function if possible.
         if let Some(tck) = self.variables.get(var) {
             *tck
@@ -173,6 +122,10 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             let key = self.new_term_key();
             *self.variables.entry(var.clone()).or_insert(key)
         }
+    }
+
+    pub fn new_monad_key(&mut self, variant: AbsTy::Variant) -> TcMonad<AbsTy> {
+        TcMonad::new(self.new_term_key(), self.new_term_key(), variant)
     }
 
     /// Imposes `constr` on the current state of the type checking procedure. This may or may not change the abstract
@@ -196,11 +149,6 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             }
         }
         Ok(())
-    }
-
-    /// Returns the abstract type associated with `key`.
-    pub fn get_type(&mut self, key: TcKey<AbsTy>) -> AbsTy {
-        self.store.probe_value(key).0
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
