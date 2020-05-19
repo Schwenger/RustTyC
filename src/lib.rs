@@ -85,10 +85,12 @@ mod reification;
 #[cfg(test)]
 mod tests;
 mod type_checker;
+mod type_table;
 mod types;
 
 pub use constraints::Constraint;
 pub use keys::TcKey;
 pub use reification::{Generalizable, Reifiable, ReificationError, TryReifiable};
 pub use type_checker::{TcVar, TypeChecker};
+pub use type_table::{AbstractTypeTable, ReifiedTypeTable, TypeTable};
 pub use types::{Abstract, TcMonad, TypeVariant};

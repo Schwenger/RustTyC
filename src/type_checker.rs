@@ -1,5 +1,6 @@
 use crate::keys::TcKey;
 use crate::types::{Abstract, TcMonad};
+use crate::AbstractTypeTable;
 use crate::Constraint;
 use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyValue as EnaValue};
 use std::collections::HashMap;
@@ -147,6 +148,15 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// Returns an iterator over all keys currently present in the type checking procedure.
     pub fn keys(&self) -> Iter<TcKey<AbsTy>> {
         self.keys.iter()
+    }
+
+    pub fn to_type_table(mut self) -> AbstractTypeTable<AbsTy> {
+        self.keys
+            .clone()
+            .into_iter()
+            .map(|k| (k, self.store.probe_value(k).0))
+            .collect::<HashMap<TcKey<AbsTy>, AbsTy>>()
+            .into()
     }
 
     // /// Commits to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
