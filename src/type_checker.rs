@@ -22,7 +22,6 @@ pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
     snapshots: Vec<Snapshot<InPlace<TcKey<AbsTy>>>>,
     variables: HashMap<Var, TcKey<AbsTy>>,
     monads: Vec<TcMonad<AbsTy>>,
-    constraints: Vec<Constraint<AbsTy>>,
 }
 
 impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
@@ -87,7 +86,6 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             snapshots: Vec::new(),
             variables: HashMap::new(),
             monads: Vec::new(),
-            constraints: Vec::new(),
         }
     }
     //
@@ -139,8 +137,11 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// This process might entail that several values need to be met.  The evaluation is lazy, i.e. it stops the
     /// entire process as soon as a single meet fails, leaving all other meet operations unattempted.  This potentially
     /// shadows additional type errors!
-    pub fn impose(&mut self, constr: Constraint<AbsTy>) {
-        self.constraints.push(constr);
+    pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), AbsTy::Error> {
+        match constr {
+            Constraint::EqKey(key1, key2) => self.store.unify_var_var(key1, key2),
+            Constraint::EqAbs(key, ty) => self.store.unify_var_value(key, TcValue(ty)),
+        }
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
