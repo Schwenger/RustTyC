@@ -26,6 +26,13 @@ pub trait TypeVariant: Clone + Copy + PartialEq + Eq {
     fn arity(self) -> u8;
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct Niladic {}
+
+impl TypeVariant for Niladic {
+    fn arity(self) -> u8 { 0 }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TcMonad<AbsTy: Abstract> {
     _this: TcKey<AbsTy>,
