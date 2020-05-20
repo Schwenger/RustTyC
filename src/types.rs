@@ -22,15 +22,17 @@ pub trait Abstract: Eq + Sized + Clone + Debug {
     fn meet(self, other: Self) -> Result<Self, Self::Error>;
 }
 
-pub trait TypeVariant: Clone + Copy + PartialEq + Eq {
+pub trait TypeVariant: Clone + Copy + PartialEq + Eq + Debug {
     fn arity(self) -> u8;
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct Niladic {}
 
 impl TypeVariant for Niladic {
-    fn arity(self) -> u8 { 0 }
+    fn arity(self) -> u8 {
+        0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
