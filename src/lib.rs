@@ -17,9 +17,6 @@
 //! `rusttyc::Abstract`.
 //! Lastly, `Variable` represents a re-usable variable during the type checking procedure and needs to implement
 //! `rusttyc::TcVar`.
-//! ```
-//!  todo!("Insert Example!");
-//! ```
 //!
 //! For a full example, refer to the example directory.
 
@@ -47,6 +44,6 @@ mod types;
 pub use constraints::Constraint;
 pub use keys::TcKey;
 pub use reification::{Generalizable, Reifiable, ReificationError, TryReifiable};
-pub use type_checker::{TcError, TcVar, TypeChecker};
+pub use type_checker::{TcErr, TcVar, TypeChecker};
 pub use type_table::{AbstractTypeTable, ReifiedTypeTable, TypeTable};
 pub use types::{Abstract, Niladic, TcMonad, TypeVariant};

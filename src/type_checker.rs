@@ -2,7 +2,7 @@ use crate::keys::TcKey;
 use crate::types::{Abstract, TcMonad};
 use crate::AbstractTypeTable;
 use crate::Constraint;
-use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, UnifyValue as EnaValue};
+use ena::unify::{InPlaceUnificationTable, UnificationTable, UnifyValue as EnaValue};
 use std::collections::HashMap;
 use std::fmt::{Debug, Error, Formatter};
 use std::hash::Hash;
@@ -21,20 +21,20 @@ impl<A: Abstract> From<A> for TcValue<A> {
 pub struct TcValue<A: Abstract>(A);
 
 impl<A: Abstract> Abstract for TcValue<A> {
-    type Error = A::Error;
+    type Err = A::Err;
     type Variant = A::Variant;
 
     fn unconstrained() -> Self {
         TcValue(A::unconstrained())
     }
 
-    fn meet(self, other: Self) -> Result<Self, Self::Error> {
+    fn meet(self, other: Self) -> Result<Self, Self::Err> {
         self.0.meet(other.0).map(TcValue)
     }
 }
 
 impl<A: Abstract> EnaValue for TcValue<A> {
-    type Error = A::Error;
+    type Error = A::Err;
 
     fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
         value1.clone().meet(value2.clone())
@@ -55,17 +55,16 @@ pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
     // snapshots: Vec<Snapshot<InPlace<TcKey<AbsTy>>>>,
     variables: HashMap<Var, TcKey<AbsTy>>,
     monads: Vec<TcMonad<AbsTy>>,
-    // key_dependents: HashMap<TcKey<AbsTy>, Vec<TcKey<AbsTy>>>,
+    dependencies: HashMap<TcKey<AbsTy>, Vec<TcKey<AbsTy>>>,
     keys: Vec<TcKey<AbsTy>>,
-    constraints: Vec<Constraint<AbsTy>>,
 }
 
 impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             f,
-            "TypeChecker: [\n\tkeys: {:?}, \n\tvariables: {:?}, \n\tmonads: {:?}\n], \n\tconstraints: {:?}",
-            self.keys, self.variables, self.monads, self.constraints,
+            "TypeChecker: [\n\tkeys: {:?}, \n\tvariables: {:?}, \n\tmonads: {:?}\n]",
+            self.keys, self.variables, self.monads
         )
     }
 }
@@ -83,15 +82,18 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
         TypeChecker {
             store: UnificationTable::new(),
             keys: Vec::new(),
-            constraints: Vec::new(),
             variables: HashMap::new(),
             monads: Vec::new(),
+            dependencies: HashMap::new(),
         }
     }
 
     #[cfg(test)]
+    pub fn test_peek(&mut self, key: TcKey<AbsTy>) -> AbsTy {
+        self.peek(key)
+    }
     /// Not necessarily the final result, use with caution!
-    pub fn peek(&mut self, key: TcKey<AbsTy>) -> AbsTy {
+    fn peek(&mut self, key: TcKey<AbsTy>) -> AbsTy {
         self.store.probe_value(key).0
     }
 
@@ -136,8 +138,19 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// This process might entail that several values need to be met.  The evaluation is lazy, i.e. it stops the
     /// entire process as soon as a single meet fails, leaving all other meet operations unattempted.  This potentially
     /// shadows additional type errors!
-    pub fn impose(&mut self, constr: Constraint<AbsTy>) {
-        self.constraints.push(constr)
+    pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), TcErr<AbsTy>> {
+        match constr {
+            Constraint::EqKey(key1, key2) => {
+                self.store.unify_var_var(key1, key2).map_err(|ue| TcErr::KeyUnification(key1, key2, ue))
+            }
+            Constraint::EqAbs(key, ty) => {
+                self.store.unify_var_value(key, TcValue(ty)).map_err(|ue| TcErr::TypeBound(key, ue))
+            }
+            Constraint::MoreConc(key1, key2) => {
+                self.dependencies.entry(key1).or_insert(Vec::new()).push(key2);
+                Ok(())
+            }
+        }
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
@@ -145,21 +158,20 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
         &self.keys
     }
 
-    pub fn type_check(mut self) -> Result<AbstractTypeTable<AbsTy>, TcError<AbsTy>> {
-        self.apply_constraints()?;
+    pub fn type_check(mut self) -> Result<AbstractTypeTable<AbsTy>, TcErr<AbsTy>> {
+        // self.apply_constraints()?;
+        self.resolve_dependencies()?;
         Ok(self.to_type_table())
     }
 
-    fn apply_constraints(&mut self) -> Result<(), TcError<AbsTy>> {
-        for constr in self.constraints.iter() {
-            match constr {
-                Constraint::EqKey(key1, key2) => {
-                    self.store.unify_var_var(*key1, *key2).map_err(|ue| TcError::KeyUnification(*key1, *key2, ue))?
-                }
-                Constraint::EqAbs(key, ty) => {
-                    self.store.unify_var_value(*key, TcValue(ty.clone())).map_err(|ue| TcError::TypeBound(*key, ue))?
-                }
+    fn resolve_dependencies(&mut self) -> Result<(), TcErr<AbsTy>> {
+        for (root, deps) in &self.dependencies.clone() {
+            let mut root_ty = self.peek(*root);
+            for dep in deps.iter() {
+                let dep_ty = self.peek(*dep);
+                root_ty = root_ty.meet(dep_ty).map_err(|ue| TcErr::KeyUnification(*root, *dep, ue))?
             }
+            self.impose(root.captures_abstract(root_ty))?
         }
         Ok(())
     }
@@ -172,36 +184,10 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             .collect::<HashMap<TcKey<AbsTy>, AbsTy>>()
             .into()
     }
-
-    // /// Commits to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
-    // /// For committing to a specific snapshot, refer to `TypeChecker::commit_to(&mut self, Snapshot<...>)`.
-    // pub fn commit_last_ss(&mut self) {
-    //     let latest = self.snapshots.pop().expect("Cannot commit to a snapshot without taking one.");
-    //     self.store.commit(latest);
-    // }
-    //
-    // /// Commits to `snapshot`.
-    // /// For committing to the last snapshot taken, refer to `TypeChecker::commit_last_ss(&mut self)`.
-    // pub fn commit_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
-    //     self.store.commit(snapshot);
-    // }
-    //
-    // /// Rolls back to the last snapshot taken with `TypeChecker::snapshot(&mut self)`.
-    // /// For rolling back to a specific snapshot, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
-    // pub fn rollback_to_last_ss(&mut self) {
-    //     let latest = self.snapshots.pop().expect("Cannot roll back to a snapshot without taking one.");
-    //     self.store.rollback_to(latest)
-    // }
-    //
-    // /// Rolls back to `snapshot`.
-    // /// For rolling back to the last snapshot taken, refer to `TypeChecker::rollback_to(&mut self, Snapshot<...>).`
-    // pub fn rollback_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
-    //     self.store.rollback_to(snapshot)
-    // }
 }
 
 #[derive(Debug, Clone)]
-pub enum TcError<AbsTy: Abstract> {
-    KeyUnification(TcKey<AbsTy>, TcKey<AbsTy>, AbsTy::Error),
-    TypeBound(TcKey<AbsTy>, AbsTy::Error),
+pub enum TcErr<AbsTy: Abstract> {
+    KeyUnification(TcKey<AbsTy>, TcKey<AbsTy>, AbsTy::Err),
+    TypeBound(TcKey<AbsTy>, AbsTy::Err),
 }

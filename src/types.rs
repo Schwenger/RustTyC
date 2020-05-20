@@ -6,7 +6,7 @@ use std::fmt::Debug;
 /// `EnaValue`.
 pub trait Abstract: Eq + Sized + Clone + Debug {
     /// Represents an error during the meet of two abstract types.
-    type Error;
+    type Err;
 
     type Variant: TypeVariant;
 
@@ -19,7 +19,7 @@ pub trait Abstract: Eq + Sized + Clone + Debug {
     }
 
     /// Computes the meet of two abstract values.
-    fn meet(self, other: Self) -> Result<Self, Self::Error>;
+    fn meet(self, other: Self) -> Result<Self, Self::Err>;
 }
 
 pub trait TypeVariant: Clone + Copy + PartialEq + Eq + Debug {

@@ -8,25 +8,24 @@ use crate::{Abstract, Generalizable, TcKey};
 pub enum Constraint<AbsTy: Abstract> {
     EqKey(TcKey<AbsTy>, TcKey<AbsTy>),
     EqAbs(TcKey<AbsTy>, AbsTy),
+    MoreConc(TcKey<AbsTy>, TcKey<AbsTy>),
     // Conjunction(Vec<Constraint<AbsTy>>),
 }
 
 impl<AbsTy: Abstract> TcKey<AbsTy> {
-    pub fn unify_with(self, other: Self) -> Constraint<AbsTy> {
+    pub fn equals(self, other: Self) -> Constraint<AbsTy> {
         Constraint::EqKey(self, other)
     }
-    pub fn captures(self, other: AbsTy) -> Constraint<AbsTy> {
+    pub fn captures_abstract(self, other: AbsTy) -> Constraint<AbsTy> {
         Constraint::EqAbs(self, other)
     }
-}
-
-impl<Var: Abstract> TcKey<Var> {
-    /// Bounds `self` by the generalization of the concrete type `conc`.
-    pub fn captures_concrete<CT>(self, conc: CT) -> Constraint<Var>
+    pub fn is_more_conc_than(self, other: Self) -> Constraint<AbsTy> {
+        Constraint::MoreConc(self, other)
+    }
+    pub fn captures_concrete<CT>(self, conc: CT) -> Constraint<AbsTy>
     where
-        CT: Generalizable<Generalized = Var>,
+        CT: Generalizable<Generalized = AbsTy>,
     {
-        // TODO: This should not be a symmetric relation.  Change when asym relations are in the game again.
-        self.captures(conc.generalize())
+        self.captures_abstract(conc.generalize())
     }
 }
