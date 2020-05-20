@@ -1,5 +1,5 @@
 use crate::type_checker::{TcVar, TypeChecker};
-use crate::{Abstract, Generalizable, ReificationError, TcKey, TryReifiable};
+use crate::{Abstract, Generalizable, ReificationError, TcErr, TcKey, TryReifiable, TypeTable};
 use std::cmp::max;
 use std::convert::TryInto;
 use std::hash::Hash;
@@ -32,14 +32,14 @@ struct Variable(usize);
 impl TcVar for Variable {}
 
 impl Abstract for AbstractType {
-    type Error = ();
+    type Err = ();
     type Variant = crate::Niladic;
 
     fn unconstrained() -> Self {
         AbstractType::Any
     }
 
-    fn meet(self, right: Self) -> Result<Self, Self::Error> {
+    fn meet(self, right: Self) -> Result<Self, Self::Err> {
         use crate::tests::AbstractType::*;
         match (self, right) {
             (Any, other) | (other, Any) => Ok(other.clone()),
@@ -170,33 +170,36 @@ fn build_complex_expression_type_checks() -> Expression {
 /// It creates keys on the fly.  This is not possible for many kinds of type systems, in which case the functions
 /// requires a context with a mapping of e.g. Variable -> Key.  The context can be built during a first pass over the
 /// tree.
-fn tc_expr<Var: TcVar>(tc: &mut TypeChecker<AbstractType, Var>, expr: &Expression) -> Result<TcKey<AbstractType>, ()> {
+fn tc_expr<Var: TcVar>(
+    tc: &mut TypeChecker<AbstractType, Var>,
+    expr: &Expression,
+) -> Result<TcKey<AbstractType>, TcErr<AbstractType>> {
     // TODO: ERROR TYPE
     use Expression::*;
     let key_result = tc.new_term_key(); // will be returned
     match expr {
         ConstInt(c) => {
             let width = (128 - c.leading_zeros()).try_into().unwrap();
-            tc.impose(key_result.captures(AbstractType::Integer(width)))?;
+            tc.impose(key_result.captures_abstract(AbstractType::Integer(width)))?;
         }
         ConstFixed(i, f) => {
             let int_width = (64 - i.leading_zeros()).try_into().unwrap();
             let frac_width = (64 - f.leading_zeros()).try_into().unwrap();
-            tc.impose(key_result.captures(AbstractType::Fixed(int_width, frac_width)))?;
+            tc.impose(key_result.captures_abstract(AbstractType::Fixed(int_width, frac_width)))?;
         }
         ConstBool(_) => tc.impose(key_result.captures_concrete(ConcreteType::Bool))?,
         Conditional { cond, cons, alt } => {
             let key_cond = tc_expr(tc, cond)?;
             let key_cons = tc_expr(tc, cons)?;
             let key_alt = tc_expr(tc, alt)?;
-            tc.impose(key_cond.captures(AbstractType::Bool))?;
+            tc.impose(key_cond.captures_abstract(AbstractType::Bool))?;
             // Two things to note regarding the next operation:
             // The meet operation can fail.  Refer to `TypeChecker::check_conflicting(&mut self, TypeCheckerKey)` for
             // detecting this case.  Moreover, if it fails, the conflicting type is persisted in the type table and
             // propagated throughout the remaining type check.  If this is undesired due to the existence of an
             // alternative type rule, refer to the snapshotting mechanism.
-            tc.impose(key_result.unify_with(key_cons))?;
-            tc.impose(key_result.unify_with(key_alt))?;
+            tc.impose(key_result.equals(key_cons))?;
+            tc.impose(key_result.equals(key_alt))?;
         }
         PolyFn { name: _, param_constraints, args, returns } => {
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
@@ -211,22 +214,22 @@ fn tc_expr<Var: TcVar>(tc: &mut TypeChecker<AbstractType, Var>, expr: &Expressio
                         let (p_constr, p_key) = params[*id];
                         // We need to enforce that the parameter is more concrete than the passed argument and that the
                         // passed argument satisfies the constraints imposed on the parametric type.
-                        tc.impose(p_key.unify_with(arg_key))?;
+                        tc.impose(p_key.equals(arg_key))?;
                         if let Some(c) = p_constr {
-                            tc.impose(arg_key.captures(c))?;
+                            tc.impose(arg_key.captures_abstract(c))?;
                         }
                     }
-                    ParamType::Abstract(at) => tc.impose(arg_key.captures(*at))?,
+                    ParamType::Abstract(at) => tc.impose(arg_key.captures_abstract(*at))?,
                 };
             }
             match returns {
-                ParamType::Abstract(at) => tc.impose(key_result.captures(*at))?,
+                ParamType::Abstract(at) => tc.impose(key_result.captures_abstract(*at))?,
                 ParamType::ParamId(id) => {
                     let (constr, key) = params[*id];
                     if let Some(c) = constr {
-                        tc.impose(key_result.captures(c))?;
+                        tc.impose(key_result.captures_abstract(c))?;
                     }
-                    tc.impose(key_result.unify_with(key))?;
+                    tc.impose(key_result.equals(key))?;
                 }
             }
         }
@@ -248,8 +251,8 @@ fn bound_by_concrete_transitive() {
     let first = tc.new_term_key();
     let second = tc.new_term_key();
     assert!(tc.impose(second.captures_concrete(ConcreteType::Int128)).is_ok());
-    assert!(tc.impose(first.unify_with(second)).is_ok());
-    assert_eq!(tc.peek(first), tc.peek(second));
+    assert!(tc.impose(first.equals(second)).is_ok());
+    assert_eq!(tc.test_peek(first), tc.test_peek(second));
 }
 
 #[test]
@@ -259,7 +262,7 @@ fn complex_type_check() {
     let res = tc_expr(&mut tc, &expr);
     match res {
         Ok(key) => {
-            let res_type = tc.peek(key);
+            let res_type = tc.test_peek(key);
             // Expression `if true then 2.7^3 + 4.3 else 3` should yield type Fixed(3, 3) because the addition requires a
             // Fixed(2,3) and a Fixed(3,3), which results in a Fixed(3, 3).
             assert_eq!(res_type, AbstractType::Fixed(3, 3));
@@ -276,7 +279,7 @@ fn failing_type_check() {
     let res = tc_expr(&mut tc, &expr);
     match res {
         Ok(key) => {
-            let res_type = tc.peek(key);
+            let res_type = tc.test_peek(key);
             panic!("Unexpectedly got result type {:?}", res_type);
         }
         Err(_) => {}
@@ -295,4 +298,56 @@ fn test_variable_dedup() {
     assert_ne!(var_a, var_b);
     assert_ne!(term, var_b);
     // The rest of the comparisons are covered by the first equivalence check.
+}
+
+#[test]
+fn test_asym_simple() {
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
+    let key_a = tc.new_term_key();
+    let key_b = tc.new_term_key();
+
+    tc.impose(key_a.captures_abstract(AbstractType::Integer(3))).unwrap();
+
+    tc.impose(key_b.is_more_conc_than(key_a)).unwrap();
+
+    let tt = tc.type_check().expect("Unexpected type error.").as_hashmap();
+    assert_eq!(tt[&key_a], tt[&key_b]);
+}
+
+#[test]
+fn test_asym_order() {
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
+    let key_a = tc.new_term_key();
+    let key_b = tc.new_term_key();
+
+    tc.impose(key_b.is_more_conc_than(key_a)).unwrap();
+
+    tc.impose(key_a.captures_abstract(AbstractType::Integer(3))).unwrap();
+
+    let tt = tc.type_check().expect("Unexpected type error.").as_hashmap();
+    assert_eq!(tt[&key_a], tt[&key_b]);
+}
+
+#[test]
+fn test_asym_separation() {
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
+    let key_a = tc.new_term_key();
+    let key_b = tc.new_term_key();
+    let key_c = tc.new_term_key();
+
+    let a_type = AbstractType::Integer(3);
+    let c_type = AbstractType::Integer(12);
+
+    tc.impose(key_a.captures_abstract(a_type)).unwrap();
+
+    tc.impose(key_b.is_more_conc_than(key_a)).unwrap();
+
+    tc.impose(key_c.captures_abstract(c_type)).unwrap();
+    tc.impose(key_b.equals(key_c)).unwrap();
+
+    let tt = tc.type_check().expect("Unexpected type error.").as_hashmap();
+    assert_eq!(tt[&key_b], tt[&key_c]);
+    assert_eq!(tt[&key_a], a_type);
+    assert_eq!(tt[&key_b], c_type);
+    assert_eq!(tt[&key_c], c_type);
 }
