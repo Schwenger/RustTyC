@@ -1,8 +1,8 @@
 use crate::type_checker::TcValue;
 use crate::types::Abstract;
 use ena::unify::UnifyKey as EnaKey;
-use std::marker::PhantomData;
 use std::hash::Hash;
+use std::marker::PhantomData;
 
 /// A `TcKey` references an abstract type object during the type checking procedure.
 /// It can be created via `TypeChecker::new_{term/var}_ key` and provides functions creating `Constraint`s that

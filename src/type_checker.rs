@@ -6,46 +6,10 @@ use ena::unify::{InPlace, InPlaceUnificationTable, Snapshot, UnificationTable, U
 use std::collections::HashMap;
 use std::fmt::{Debug, Error, Formatter};
 use std::hash::Hash;
-use std::slice::Iter;
-
-/// Represents a type checker.
-/// The main struct for the type checking procedure.
-/// It manages a set of abstract types in a lattice-like structure and perform a union-find procedure to derive
-/// the least concrete abstract type that satisfies a defined set of constraints.
-/// Each abstract type is referred to with a key assigned by the `TypeChecker`
-///
-/// The `TypeChecker` allows for the creation of keys and imposition of constraints on them,
-/// refer to `TypeChecker::new_{term/var}_key(&mut self)` and
-/// `TypeChecker::impose(&mut self, constr: Constraint<Key>)`, respectively.
-pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
-    store: InPlaceUnificationTable<TcKey<AbsTy>>,
-    keys: Vec<TcKey<AbsTy>>,
-    snapshots: Vec<Snapshot<InPlace<TcKey<AbsTy>>>>,
-    variables: HashMap<Var, TcKey<AbsTy>>,
-    monads: Vec<TcMonad<AbsTy>>,
-}
-
-impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(
-            f,
-            "TypeChecker: [\n\tstore: {:?}, \n\tkeys: {:?}, \n\tsnapshots: {}\n]",
-            self.store,
-            self.keys,
-            self.snapshots.len()
-        )
-    }
-}
-
-impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
-    fn default() -> Self {
-        TypeChecker::new()
-    }
-}
 
 /// Represents a re-usable variable in the type checking procedure.  TcKeys for variables will be managed by the
 /// `TypeChecker` to avoid duplication.
-pub trait TcVar: Eq + Hash + Clone {}
+pub trait TcVar: Debug + Eq + Hash + Clone {}
 
 impl<A: Abstract> From<A> for TcValue<A> {
     fn from(a: A) -> Self {
@@ -77,6 +41,41 @@ impl<A: Abstract> EnaValue for TcValue<A> {
     }
 }
 
+/// Represents a type checker.
+/// The main struct for the type checking procedure.
+/// It manages a set of abstract types in a lattice-like structure and perform a union-find procedure to derive
+/// the least concrete abstract type that satisfies a defined set of constraints.
+/// Each abstract type is referred to with a key assigned by the `TypeChecker`
+///
+/// The `TypeChecker` allows for the creation of keys and imposition of constraints on them,
+/// refer to `TypeChecker::new_{term/var}_key(&mut self)` and
+/// `TypeChecker::impose(&mut self, constr: Constraint<Key>)`, respectively.
+pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
+    store: InPlaceUnificationTable<TcKey<AbsTy>>,
+    // snapshots: Vec<Snapshot<InPlace<TcKey<AbsTy>>>>,
+    variables: HashMap<Var, TcKey<AbsTy>>,
+    monads: Vec<TcMonad<AbsTy>>,
+    // key_dependents: HashMap<TcKey<AbsTy>, Vec<TcKey<AbsTy>>>,
+    keys: Vec<TcKey<AbsTy>>,
+    constraints: Vec<Constraint<AbsTy>>,
+}
+
+impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "TypeChecker: [\n\tkeys: {:?}, \n\tvariables: {:?}, \n\tmonads: {:?}\n], \n\tconstraints: {:?}",
+            self.keys, self.variables, self.monads, self.constraints,
+        )
+    }
+}
+
+impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
+    fn default() -> Self {
+        TypeChecker::new()
+    }
+}
+
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
 impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// Creates a new, empty `TypeChecker`.  
@@ -84,18 +83,17 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
         TypeChecker {
             store: UnificationTable::new(),
             keys: Vec::new(),
-            snapshots: Vec::new(),
+            constraints: Vec::new(),
             variables: HashMap::new(),
             monads: Vec::new(),
         }
     }
-    //
-    // /// Returns a view on the current state of `self`.  Returns a mapping of all keys known to
-    // /// `self` to the `Key::Value` associated with it.
-    // pub fn get_type_table(&mut self) -> Vec<(TcKey<AbsTy>, AbsTy)> {
-    //     let keys = self.keys.clone();
-    //     keys.into_iter().map(|key| (key, self.get_type(key))).collect()
-    // }
+
+    #[cfg(test)]
+    /// Not necessarily the final result, use with caution!
+    pub fn peek(&mut self, key: TcKey<AbsTy>) -> AbsTy {
+        self.store.probe_value(key).0
+    }
 
     /// Creates a new unconstrained variable that can be referred to using the returned
     /// `TcKey`.  The current state of it can be accessed using
@@ -138,19 +136,35 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// This process might entail that several values need to be met.  The evaluation is lazy, i.e. it stops the
     /// entire process as soon as a single meet fails, leaving all other meet operations unattempted.  This potentially
     /// shadows additional type errors!
-    pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), AbsTy::Error> {
-        match constr {
-            Constraint::EqKey(key1, key2) => self.store.unify_var_var(key1, key2),
-            Constraint::EqAbs(key, ty) => self.store.unify_var_value(key, TcValue(ty)),
-        }
+    pub fn impose(&mut self, constr: Constraint<AbsTy>) {
+        self.constraints.push(constr)
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
-    pub fn keys(&self) -> Iter<TcKey<AbsTy>> {
-        self.keys.iter()
+    pub fn all_keys(&self) -> &[TcKey<AbsTy>] {
+        &self.keys
     }
 
-    pub fn to_type_table(mut self) -> AbstractTypeTable<AbsTy> {
+    pub fn type_check(mut self) -> Result<AbstractTypeTable<AbsTy>, TcError<AbsTy>> {
+        self.apply_constraints()?;
+        Ok(self.to_type_table())
+    }
+
+    fn apply_constraints(&mut self) -> Result<(), TcError<AbsTy>> {
+        for constr in self.constraints.iter() {
+            match constr {
+                Constraint::EqKey(key1, key2) => {
+                    self.store.unify_var_var(*key1, *key2).map_err(|ue| TcError::KeyUnification(*key1, *key2, ue))?
+                }
+                Constraint::EqAbs(key, ty) => {
+                    self.store.unify_var_value(*key, TcValue(ty.clone())).map_err(|ue| TcError::TypeBound(*key, ue))?
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn to_type_table(mut self) -> AbstractTypeTable<AbsTy> {
         self.keys
             .clone()
             .into_iter()
@@ -184,4 +198,10 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     // pub fn rollback_to(&mut self, snapshot: Snapshot<InPlace<TcKey<AbsTy>>>) {
     //     self.store.rollback_to(snapshot)
     // }
+}
+
+#[derive(Debug, Clone)]
+pub enum TcError<AbsTy: Abstract> {
+    KeyUnification(TcKey<AbsTy>, TcKey<AbsTy>, AbsTy::Error),
+    TypeBound(TcKey<AbsTy>, AbsTy::Error),
 }

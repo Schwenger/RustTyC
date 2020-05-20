@@ -47,6 +47,6 @@ mod types;
 pub use constraints::Constraint;
 pub use keys::TcKey;
 pub use reification::{Generalizable, Reifiable, ReificationError, TryReifiable};
-pub use type_checker::{TcVar, TypeChecker};
+pub use type_checker::{TcError, TcVar, TypeChecker};
 pub use type_table::{AbstractTypeTable, ReifiedTypeTable, TypeTable};
 pub use types::{Abstract, Niladic, TcMonad, TypeVariant};
