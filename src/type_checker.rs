@@ -57,6 +57,7 @@ pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
     monads: Vec<TcMonad<AbsTy>>,
     dependencies: HashMap<TcKey<AbsTy>, Vec<TcKey<AbsTy>>>,
     keys: Vec<TcKey<AbsTy>>,
+    pure_constraints: Vec<Constraint<AbsTy>>,
 }
 
 impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
@@ -85,6 +86,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             variables: HashMap::new(),
             monads: Vec::new(),
             dependencies: HashMap::new(),
+            pure_constraints: Vec::new(),
         }
     }
 
@@ -140,7 +142,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// shadows additional type errors!
     pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), TcErr<AbsTy>> {
         match constr {
-            Constraint::EqKey(key1, key2) => {
+            Constraint::SymLink(key1, key2) => {
                 self.store.unify_var_var(key1, key2).map_err(|ue| TcErr::KeyUnification(key1, key2, ue))
             }
             Constraint::EqAbs(key, ty) => {
@@ -148,6 +150,10 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             }
             Constraint::MoreConc(key1, key2) => {
                 self.dependencies.entry(key1).or_insert(Vec::new()).push(key2);
+                Ok(())
+            }
+            Constraint::Equal(_, _) => {
+                self.pure_constraints.push(constr);
                 Ok(())
             }
         }
@@ -161,6 +167,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     pub fn type_check(mut self) -> Result<AbstractTypeTable<AbsTy>, TcErr<AbsTy>> {
         // self.apply_constraints()?;
         self.resolve_dependencies()?;
+        self.check_pure_constraints()?;
         Ok(self.to_type_table())
     }
 
@@ -172,6 +179,24 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
                 root_ty = root_ty.meet(dep_ty).map_err(|ue| TcErr::KeyUnification(*root, *dep, ue))?
             }
             self.impose(root.captures_abstract(root_ty))?
+        }
+        Ok(())
+    }
+
+    fn check_pure_constraints(&mut self) -> Result<(), TcErr<AbsTy>> {
+        for constr in &self.pure_constraints.clone() {
+            match constr {
+                Constraint::SymLink(_, _) | Constraint::EqAbs(_, _) | Constraint::MoreConc(_, _) => {
+                    panic!("Is not a pure constraint.")
+                } // TODO: Use type system for that.
+                Constraint::Equal(key1, key2) => {
+                    let ty1 = self.peek(*key1);
+                    let ty2 = self.peek(*key2);
+                    if ty1 != ty2 {
+                        return Err(TcErr::TypeComparison(*key1, *key2, "Equal"));
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -190,4 +215,5 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
 pub enum TcErr<AbsTy: Abstract> {
     KeyUnification(TcKey<AbsTy>, TcKey<AbsTy>, AbsTy::Err),
     TypeBound(TcKey<AbsTy>, AbsTy::Err),
+    TypeComparison(TcKey<AbsTy>, TcKey<AbsTy>, &'static str), // TODO: &str is insufficient
 }

@@ -198,8 +198,8 @@ fn tc_expr<Var: TcVar>(
             // detecting this case.  Moreover, if it fails, the conflicting type is persisted in the type table and
             // propagated throughout the remaining type check.  If this is undesired due to the existence of an
             // alternative type rule, refer to the snapshotting mechanism.
-            tc.impose(key_result.equals(key_cons))?;
-            tc.impose(key_result.equals(key_alt))?;
+            tc.impose(key_result.is_linked_symmetrically(key_cons))?;
+            tc.impose(key_result.is_linked_symmetrically(key_alt))?;
         }
         PolyFn { name: _, param_constraints, args, returns } => {
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
@@ -214,7 +214,7 @@ fn tc_expr<Var: TcVar>(
                         let (p_constr, p_key) = params[*id];
                         // We need to enforce that the parameter is more concrete than the passed argument and that the
                         // passed argument satisfies the constraints imposed on the parametric type.
-                        tc.impose(p_key.equals(arg_key))?;
+                        tc.impose(p_key.is_linked_symmetrically(arg_key))?;
                         if let Some(c) = p_constr {
                             tc.impose(arg_key.captures_abstract(c))?;
                         }
@@ -229,7 +229,7 @@ fn tc_expr<Var: TcVar>(
                     if let Some(c) = constr {
                         tc.impose(key_result.captures_abstract(c))?;
                     }
-                    tc.impose(key_result.equals(key))?;
+                    tc.impose(key_result.is_linked_symmetrically(key))?;
                 }
             }
         }
@@ -251,7 +251,7 @@ fn bound_by_concrete_transitive() {
     let first = tc.new_term_key();
     let second = tc.new_term_key();
     assert!(tc.impose(second.captures_concrete(ConcreteType::Int128)).is_ok());
-    assert!(tc.impose(first.equals(second)).is_ok());
+    assert!(tc.impose(first.is_linked_symmetrically(second)).is_ok());
     assert_eq!(tc.test_peek(first), tc.test_peek(second));
 }
 
@@ -343,7 +343,7 @@ fn test_asym_separation() {
     tc.impose(key_b.is_more_conc_than(key_a)).unwrap();
 
     tc.impose(key_c.captures_abstract(c_type)).unwrap();
-    tc.impose(key_b.equals(key_c)).unwrap();
+    tc.impose(key_b.is_linked_symmetrically(key_c)).unwrap();
 
     let tt = tc.type_check().expect("Unexpected type error.").as_hashmap();
     assert_eq!(tt[&key_b], tt[&key_c]);
