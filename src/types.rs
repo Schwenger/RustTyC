@@ -1,4 +1,3 @@
-use crate::keys::TcKey;
 use std::fmt::Debug;
 
 /// The main trait representing types throughout the type checking procedure.
@@ -6,9 +5,11 @@ use std::fmt::Debug;
 /// `EnaValue`.
 pub trait Abstract: Eq + Sized + Clone + Debug {
     /// Represents an error during the meet of two abstract types.
-    type Err;
+    type Err: Debug;
 
-    type Variant: TypeVariant;
+    type VariantTag: Debug + Clone + Copy + PartialEq + Eq;
+
+    fn variant(&self) -> Option<Self::VariantTag>;
 
     /// Returns an unconstrained abstract type.
     fn unconstrained() -> Self;
@@ -20,40 +21,14 @@ pub trait Abstract: Eq + Sized + Clone + Debug {
 
     /// Computes the meet of two abstract values.
     fn meet(self, other: Self) -> Result<Self, Self::Err>;
-}
 
-pub trait TypeVariant: Clone + Copy + PartialEq + Eq + Debug {
-    fn arity(self) -> u8;
-}
+    fn variant_arity(tag: Self::VariantTag) -> usize;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct Niladic {}
+    fn nth_child(&self, n: usize) -> &Self;
 
-impl TypeVariant for Niladic {
-    fn arity(self) -> u8 {
-        0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TcMonad<AbsTy: Abstract> {
-    _this: TcKey<AbsTy>,
-    _child: TcKey<AbsTy>,
-    _variant: AbsTy::Variant,
-}
-
-impl<AbsTy: Abstract> Copy for TcMonad<AbsTy> {}
-
-impl<AbsTy: Abstract> TcMonad<AbsTy> {
-    pub fn new(this: TcKey<AbsTy>, child: TcKey<AbsTy>, variant: AbsTy::Variant) -> Self {
-        TcMonad { _this: this, _child: child, _variant: variant }
+    fn arity(&self) -> Option<usize> {
+        self.variant().map(Self::variant_arity)
     }
 
-    pub fn key(&self) -> TcKey<AbsTy> {
-        self._this
-    }
-
-    pub fn child(&self) -> TcKey<AbsTy> {
-        self._child
-    }
+    fn from_tag(tag: Self::VariantTag, children: Vec<Self>) -> Self;
 }

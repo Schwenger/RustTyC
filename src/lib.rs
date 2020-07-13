@@ -32,6 +32,7 @@
     unused_qualifications
 )]
 
+pub(crate) mod constraint_graph;
 mod constraints;
 mod keys;
 mod reification;
@@ -46,4 +47,4 @@ pub use keys::TcKey;
 pub use reification::{Generalizable, Reifiable, ReificationError, TryReifiable};
 pub use type_checker::{TcErr, TcVar, TypeChecker};
 pub use type_table::{AbstractTypeTable, ReifiedTypeTable, TypeTable};
-pub use types::{Abstract, Niladic, TcMonad, TypeVariant};
+pub use types::Abstract;

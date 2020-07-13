@@ -1,45 +1,15 @@
+use crate::constraint_graph::ConstraintGraph;
 use crate::keys::TcKey;
-use crate::types::{Abstract, TcMonad};
+use crate::types::Abstract;
 use crate::AbstractTypeTable;
 use crate::Constraint;
-use ena::unify::{InPlaceUnificationTable, UnificationTable, UnifyValue as EnaValue};
 use std::collections::HashMap;
-use std::fmt::{Debug, Error, Formatter};
+use std::fmt::Debug;
 use std::hash::Hash;
 
 /// Represents a re-usable variable in the type checking procedure.  TcKeys for variables will be managed by the
 /// `TypeChecker` to avoid duplication.
 pub trait TcVar: Debug + Eq + Hash + Clone {}
-
-impl<A: Abstract> From<A> for TcValue<A> {
-    fn from(a: A) -> Self {
-        TcValue(a)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TcValue<A: Abstract>(A);
-
-impl<A: Abstract> Abstract for TcValue<A> {
-    type Err = A::Err;
-    type Variant = A::Variant;
-
-    fn unconstrained() -> Self {
-        TcValue(A::unconstrained())
-    }
-
-    fn meet(self, other: Self) -> Result<Self, Self::Err> {
-        self.0.meet(other.0).map(TcValue)
-    }
-}
-
-impl<A: Abstract> EnaValue for TcValue<A> {
-    type Error = A::Err;
-
-    fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
-        value1.clone().meet(value2.clone())
-    }
-}
 
 /// Represents a type checker.
 /// The main struct for the type checking procedure.
@@ -50,24 +20,11 @@ impl<A: Abstract> EnaValue for TcValue<A> {
 /// The `TypeChecker` allows for the creation of keys and imposition of constraints on them,
 /// refer to `TypeChecker::new_{term/var}_key(&mut self)` and
 /// `TypeChecker::impose(&mut self, constr: Constraint<Key>)`, respectively.
+#[derive(Debug, Clone)]
 pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
-    store: InPlaceUnificationTable<TcKey<AbsTy>>,
-    // snapshots: Vec<Snapshot<InPlace<TcKey<AbsTy>>>>,
-    variables: HashMap<Var, TcKey<AbsTy>>,
-    monads: Vec<TcMonad<AbsTy>>,
-    dependencies: HashMap<TcKey<AbsTy>, Vec<TcKey<AbsTy>>>,
-    keys: Vec<TcKey<AbsTy>>,
-    pure_constraints: Vec<Constraint<AbsTy>>,
-}
-
-impl<AbsTy: Abstract, Var: TcVar> Debug for TypeChecker<AbsTy, Var> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(
-            f,
-            "TypeChecker: [\n\tkeys: {:?}, \n\tvariables: {:?}, \n\tmonads: {:?}\n]",
-            self.keys, self.variables, self.monads
-        )
-    }
+    variables: HashMap<Var, TcKey>,
+    graph: ConstraintGraph<AbsTy>,
+    keys: Vec<TcKey>,
 }
 
 impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
@@ -80,140 +37,79 @@ impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
 impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// Creates a new, empty `TypeChecker`.  
     pub fn new() -> Self {
-        TypeChecker {
-            store: UnificationTable::new(),
-            keys: Vec::new(),
-            variables: HashMap::new(),
-            monads: Vec::new(),
-            dependencies: HashMap::new(),
-            pure_constraints: Vec::new(),
-        }
+        TypeChecker { keys: Vec::new(), variables: HashMap::new(), graph: ConstraintGraph::new() }
     }
 
     #[cfg(test)]
-    pub fn test_peek(&mut self, key: TcKey<AbsTy>) -> AbsTy {
+    pub fn test_peek(&mut self, key: TcKey) -> &AbsTy {
         self.peek(key)
     }
+
     /// Not necessarily the final result, use with caution!
-    fn peek(&mut self, key: TcKey<AbsTy>) -> AbsTy {
-        self.store.probe_value(key).0
+    #[allow(dead_code)]
+    fn peek(&mut self, key: TcKey) -> &AbsTy {
+        self.graph.peek(key)
     }
 
-    /// Creates a new unconstrained variable that can be referred to using the returned
-    /// `TcKey`.  The current state of it can be accessed using
-    /// `TypeChecker::get_type(TcKey)` and constraints can be imposed using
-    /// `TypeChecker::impose(Constraint)`.
-    /// `TcKey` provides means to create such `Constraints`.
-    /// This key ought to represent a non-reusable term rather than a variable; refer to
-    /// `TypeChecker::new_var_key(Var)`.
-    pub fn new_term_key(&mut self) -> TcKey<AbsTy> {
-        let new = TcKey::new(self.store.new_key(TcValue::unconstrained()).ix);
-        self.keys.push(new);
-        new
+    fn next_key(&self) -> TcKey {
+        TcKey::new(self.keys.len())
     }
 
-    /// Returns a key that is associated with the passed variable.  If no such key exists, an
-    /// unconstrained key is created and returned.  Otherwise, the respective associated key
-    /// will be returned.
-    /// Constraints on the key can be imposed using `TypeChecker::impose(Constraint)`.
-    /// `TcKey` provides means to create such `Constraints`.
-    /// This key ought to represent a reusable variable rather than a term; refer to
-    /// `TypeChecker::new_term_key()`.
-    pub fn get_var_key(&mut self, var: &Var) -> TcKey<AbsTy> {
+    pub fn new_term_key(&mut self) -> TcKey {
+        let key = self.next_key();
+        self.graph.add(key);
+        self.keys.push(key); // probably unnecessary.
+        key
+    }
+
+    pub fn get_var_key(&mut self, var: &Var) -> TcKey {
         // Avoid cloning `var` by forgoing the `entry` function if possible.
         if let Some(tck) = self.variables.get(var) {
             *tck
         } else {
             let key = self.new_term_key();
-            *self.variables.entry(var.clone()).or_insert(key)
+            self.variables.insert(var.clone(), key);
+            key
         }
     }
 
-    pub fn new_monad_key(&mut self, variant: AbsTy::Variant) -> TcMonad<AbsTy> {
-        let res = TcMonad::new(self.new_term_key(), self.new_term_key(), variant);
-        self.monads.push(res);
-        res
+    pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<AbsTy>> {
+        let next_key = self.next_key(); // Cannot mutate the state!
+        let child = self.graph.nth_child(parent, nth, || next_key)?;
+        if child != next_key {
+            self.keys.push(child);
+        }
+        Ok(child)
     }
 
-    /// Imposes `constr` on the current state of the type checking procedure. This may or may not change the abstract
-    /// types of some keys.
-    /// This process might entail that several values need to be met.  The evaluation is lazy, i.e. it stops the
-    /// entire process as soon as a single meet fails, leaving all other meet operations unattempted.  This potentially
-    /// shadows additional type errors!
     pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), TcErr<AbsTy>> {
         match constr {
-            Constraint::SymLink(key1, key2) => {
-                self.store.unify_var_var(key1, key2).map_err(|ue| TcErr::KeyUnification(key1, key2, ue))
+            Constraint::Conjunction(cs) => {
+                cs.into_iter().map(|c| self.impose(c)).collect::<Result<(), TcErr<AbsTy>>>()?
             }
-            Constraint::EqAbs(key, ty) => {
-                self.store.unify_var_value(key, TcValue(ty)).map_err(|ue| TcErr::TypeBound(key, ue))
-            }
-            Constraint::MoreConc(key1, key2) => {
-                self.dependencies.entry(key1).or_insert(Vec::new()).push(key2);
-                Ok(())
-            }
-            Constraint::Equal(_, _) => {
-                self.pure_constraints.push(constr);
-                Ok(())
-            }
+            Constraint::Equal(a, b) => self.graph.equate(a, b),
+            Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
+            Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
+            Constraint::Variant(target, variant) => self.graph.register_variant(target, variant)?,
         }
+        Ok(())
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
-    pub fn all_keys(&self) -> &[TcKey<AbsTy>] {
+    pub fn all_keys(&self) -> &[TcKey] {
         &self.keys
     }
 
-    pub fn type_check(mut self) -> Result<AbstractTypeTable<AbsTy>, TcErr<AbsTy>> {
-        // self.apply_constraints()?;
-        self.resolve_dependencies()?;
-        self.check_pure_constraints()?;
-        Ok(self.to_type_table())
-    }
-
-    fn resolve_dependencies(&mut self) -> Result<(), TcErr<AbsTy>> {
-        for (root, deps) in &self.dependencies.clone() {
-            let mut root_ty = self.peek(*root);
-            for dep in deps.iter() {
-                let dep_ty = self.peek(*dep);
-                root_ty = root_ty.meet(dep_ty).map_err(|ue| TcErr::KeyUnification(*root, *dep, ue))?
-            }
-            self.impose(root.captures_abstract(root_ty))?
-        }
-        Ok(())
-    }
-
-    fn check_pure_constraints(&mut self) -> Result<(), TcErr<AbsTy>> {
-        for constr in &self.pure_constraints.clone() {
-            match constr {
-                Constraint::SymLink(_, _) | Constraint::EqAbs(_, _) | Constraint::MoreConc(_, _) => {
-                    panic!("Is not a pure constraint.")
-                } // TODO: Use type system for that.
-                Constraint::Equal(key1, key2) => {
-                    let ty1 = self.peek(*key1);
-                    let ty2 = self.peek(*key2);
-                    if ty1 != ty2 {
-                        return Err(TcErr::TypeComparison(*key1, *key2, "Equal"));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn to_type_table(mut self) -> AbstractTypeTable<AbsTy> {
-        self.keys
-            .clone()
-            .into_iter()
-            .map(|k| (k, self.store.probe_value(k).0))
-            .collect::<HashMap<TcKey<AbsTy>, AbsTy>>()
-            .into()
+    pub fn type_check(self) -> Result<AbstractTypeTable<AbsTy>, TcErr<AbsTy>> {
+        self.graph.solve().map(AbstractTypeTable::from)
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum TcErr<AbsTy: Abstract> {
-    KeyUnification(TcKey<AbsTy>, TcKey<AbsTy>, AbsTy::Err),
-    TypeBound(TcKey<AbsTy>, AbsTy::Err),
-    TypeComparison(TcKey<AbsTy>, TcKey<AbsTy>, &'static str), // TODO: &str is insufficient
+    KeyUnification(TcKey, TcKey, AbsTy::Err),
+    TypeBound(TcKey, AbsTy::Err),
+    TypeComparison(TcKey, TcKey, &'static str), // TODO: &str is insufficient
+    DoubleVariantAssignment(TcKey, AbsTy::VariantTag, AbsTy::VariantTag),
+    ChildAccessOutOfBound(AbsTy::VariantTag, usize),
 }
