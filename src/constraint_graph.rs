@@ -49,7 +49,6 @@ impl<T: Abstract> Vertex<T> {
 #[derive(Debug, Clone)]
 struct FullVertex<T: Abstract> {
     children: Vec<Option<VertexRef>>,
-    representative: Option<VertexRef>,
     upper_bounds: Vec<VertexRef>,
     this: VertexRef,
     key: TcKey,
@@ -58,14 +57,7 @@ struct FullVertex<T: Abstract> {
 
 impl<T: Abstract> Vertex<T> {
     fn new_niladic(key: TcKey, this: VertexRef) -> Vertex<T> {
-        Vertex::Repr(FullVertex {
-            children: Vec::new(),
-            representative: None,
-            upper_bounds: Vec::new(),
-            this,
-            key,
-            ty: T::unconstrained(),
-        })
+        Vertex::Repr(FullVertex { children: Vec::new(), upper_bounds: Vec::new(), this, key, ty: T::unconstrained() })
     }
 }
 
