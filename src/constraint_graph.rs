@@ -76,7 +76,6 @@ impl<T: Abstract> ConstraintGraph<T> {
         self.apply_variant(target, variant).map(|_| ())
     }
 
-    /// TODO:  This function is incredibly ugly.
     pub(crate) fn nth_child<F>(&mut self, parent: TcKey, nth: usize, keygen: F) -> Result<TcKey, TcErr<T>>
     where
         F: FnOnce() -> TcKey,
@@ -87,9 +86,8 @@ impl<T: Abstract> ConstraintGraph<T> {
         }
         Self::fill_with(&mut parent_v.children, None, nth);
         let nth_child = parent_v.children[nth];
-        drop(parent_v);
         if let Some(child) = nth_child {
-            return Ok(self.vertices[child].key().clone());
+            return Ok(self.vertices[child].key());
         }
         let key = keygen();
         self.add(key);
@@ -156,25 +154,24 @@ impl<T: Abstract> ConstraintGraph<T> {
             }
         }
         let target_ref = v.this;
-        drop(v);
         self.meet_variant_type(target_ref, variant)
     }
 
     fn meet_variant_type(&mut self, target_ref: VertexRef, variant: T::VariantTag) -> Result<bool, TcErr<T>> {
-        let v = self.repr(target_ref);
-        let target_key = v.key;
-        let target_ty = v.ty.clone();
-        let mut children = v.children.clone();
-        if children.len() > T::variant_arity(variant) {
-            return Err(TcErr::ChildAccessOutOfBound(variant, children.len()));
+        let target = self.repr_mut(target_ref);
+        if target.children.len() > T::variant_arity(variant) {
+            return Err(TcErr::ChildAccessOutOfBound(variant, target.children.len()));
         }
-        Self::fill_with(&mut children, None, T::variant_arity(variant));
-        drop(v);
-        let children_types =
-            children.into_iter().map(|c| c.map(|vr| self.repr(vr).ty.clone()).unwrap_or(T::unconstrained())).collect();
+        Self::fill_with(&mut target.children, None, T::variant_arity(variant));
+        let target = self.repr(target_ref); // get rid of mutable borrow
+        let children_types = target
+            .children
+            .iter()
+            .map(|c| c.map(|vr| self.repr(vr).ty.clone()).unwrap_or_else(T::unconstrained))
+            .collect();
         let registered_ty = T::from_tag(variant, children_types);
-        let new_ty = target_ty.meet(registered_ty).map_err(|e| TcErr::TypeBound(target_key, e))?;
-        let change = self.repr(target_ref).ty != new_ty;
+        let new_ty = target.ty.meet(&registered_ty).map_err(|e| TcErr::TypeBound(target.key, e))?;
+        let change = target.ty != new_ty;
         self.repr_mut(target_ref).ty = new_ty;
         Ok(change)
     }
@@ -188,14 +185,10 @@ impl<T: Abstract> ConstraintGraph<T> {
 
     fn add_explicit_bound(&mut self, target: TcKey, bound: T) -> Result<bool, TcErr<T>> {
         let mut vertex = self.repr_mut_from_key(target);
-        match vertex.ty.clone().meet(bound) {
-            Ok(new) => {
-                let change = vertex.ty != new;
-                vertex.ty = new;
-                Ok(change)
-            }
-            Err(e) => Err(TcErr::TypeBound(target, e)),
-        }
+        let new = vertex.ty.meet(&bound).map_err(|e| TcErr::TypeBound(target, e))?;
+        let change = vertex.ty != new;
+        vertex.ty = new;
+        Ok(change)
     }
 
     // ACCESS LOGIC
@@ -282,15 +275,13 @@ impl<T: Abstract> ConstraintGraph<T> {
             .into_iter()
             .map(|vr| {
                 let vertex = self.repr(vr);
-                let old = vertex.ty.clone();
                 let new = vertex
                     .upper_bounds
                     .iter()
-                    .map(|vr| self.repr(*vr).ty.clone())
-                    .fold(Ok(old.clone()), |a, b| a.and_then(|a| a.meet(b)))
+                    .map(|vr| &self.repr(*vr).ty)
+                    .fold(Ok(vertex.ty.clone()), |a, b| a.and_then(|a| a.meet(&b)))
                     .map_err(|e| TcErr::TypeBound(vertex.key, e))?;
-                drop(vertex);
-                let change = old != new;
+                let change = vertex.ty != new;
                 if change {
                     self.repr_mut(vr).ty = new;
                 }

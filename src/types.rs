@@ -20,7 +20,7 @@ pub trait Abstract: Eq + Sized + Clone + Debug {
     }
 
     /// Computes the meet of two abstract values.
-    fn meet(self, other: Self) -> Result<Self, Self::Err>;
+    fn meet(&self, other: &Self) -> Result<Self, Self::Err>;
 
     fn variant_arity(tag: Self::VariantTag) -> usize;
 
