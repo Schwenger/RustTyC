@@ -116,21 +116,21 @@ impl<T: Abstract> ConstraintGraph<T> {
 
     // INTERNAL HELPER FUNCTIONS
 
-    fn establish_fwd(&mut self, sub: VertexRef, rep: VertexRef) {
-        let sub_v = self.repr_mut(sub);
-        let new_sub = Vertex::Fwd { key: sub_v.key, this: sub_v.this, repr: rep };
-        let old_bounds = sub_v.upper_bounds.clone();
-        let mut sub_children = sub_v.children.clone();
-        drop(sub_v);
-        let mut rep_children = self.repr(rep).children.clone();
+    fn establish_fwd(&mut self, sub: VertexRef, repr: VertexRef) {
+        let FullVertex { this, key, .. } = *self.repr(sub);
+        assert_eq!(this, sub, "Cannot establish a forward for a vertex that already is a forward.");
+        let mut local = Vertex::Fwd { key, this, repr };
+        std::mem::swap(&mut self.vertices[local.this()], &mut local);
+        let sub = local.mut_full();
+        let mut rep_children = self.repr(repr).children.clone();
 
-        let max_children = usize::max(sub_children.len(), rep_children.len());
-        Self::fill_with(&mut sub_children, None, max_children);
+        let max_children = usize::max(sub.children.len(), rep_children.len());
+        Self::fill_with(&mut sub.children, None, max_children);
         Self::fill_with(&mut rep_children, None, max_children);
 
         let new_children = rep_children
             .iter()
-            .zip(sub_children.iter())
+            .zip(sub.children.iter())
             .map(|(c1, c2)| match (c1, c2) {
                 (None, x) | (x, None) => *x,
                 (Some(c1), Some(c2)) => {
@@ -143,9 +143,8 @@ impl<T: Abstract> ConstraintGraph<T> {
             .collect();
 
         // Commit changes
-        self.vertices[sub] = new_sub;
-        let mut rep_v = self.repr_mut(rep);
-        rep_v.upper_bounds.extend(old_bounds.iter());
+        let mut rep_v = self.repr_mut(repr);
+        rep_v.upper_bounds.extend(sub.upper_bounds.iter());
         rep_v.children = new_children;
     }
 
