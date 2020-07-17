@@ -277,7 +277,6 @@ impl<T: Abstract> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  
     /// Returns the type table mapping each registered key to a type if no contradiction occurs.
     pub(crate) fn solve(mut self) -> Result<HashMap<TcKey, T>, TcErr<T>> {
-        println!("{:?}", &self.vertices);
         let mut change = true;
         while change {
             change = false;
