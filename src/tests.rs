@@ -1,5 +1,6 @@
 use crate::type_checker::{TcVar, TypeChecker};
-use crate::{Abstract, Generalizable, ReificationError, TcErr, TcKey, TryReifiable, TypeTable};
+use crate::types::{Abstract, AbstractTypeTable, Generalizable, ReificationErr, TryReifiable, TypeTable};
+use crate::{TcErr, TcKey};
 use std::cmp::max;
 use std::convert::TryInto;
 use std::hash::Hash;
@@ -66,13 +67,11 @@ impl Abstract for AbstractType {
             AbstractType::Bool => Some(VariantTag::Bool),
         }
     }
-    fn variant_arity(tag: Self::VariantTag) -> usize {
+    fn variant_arity(_tag: Self::VariantTag) -> usize {
         0
     }
-    fn nth_child(&self, n: usize) -> &Self {
-        panic!("Arity is always 0, will never be called.")
-    }
     fn from_tag(tag: Self::VariantTag, children: Vec<Self>) -> Self {
+        assert!(children.is_empty());
         match tag {
             VariantTag::Fixed => AbstractType::Fixed(0, 0),
             VariantTag::Integer => AbstractType::Integer(0),
@@ -121,18 +120,18 @@ enum Expression {
 impl TryReifiable for AbstractType {
     type Reified = ConcreteType;
 
-    fn try_reify(&self) -> Result<Self::Reified, ReificationError> {
+    fn try_reify(&self) -> Result<Self::Reified, ReificationErr> {
         match self {
-            AbstractType::Any => Err(ReificationError::TooGeneral("Cannot reify `Any`.".to_string())),
+            AbstractType::Any => Err(ReificationErr::TooGeneral("Cannot reify `Any`.".to_string())),
             AbstractType::Integer(w) if *w <= 128 => Ok(ConcreteType::Int128),
             AbstractType::Integer(w) => {
-                Err(ReificationError::Conflicting(format!("Integer too wide, {}-bit not supported.", w)))
+                Err(ReificationErr::Conflicting(format!("Integer too wide, {}-bit not supported.", w)))
             }
             AbstractType::Fixed(i, f) if *i <= 64 && *f <= 64 => Ok(ConcreteType::FixedPointI64F64),
             AbstractType::Fixed(i, f) => {
-                Err(ReificationError::Conflicting(format!("Fixed point number too wide, I{}F{} not supported.", i, f)))
+                Err(ReificationErr::Conflicting(format!("Fixed point number too wide, I{}F{} not supported.", i, f)))
             }
-            AbstractType::Numeric => Err(ReificationError::TooGeneral(
+            AbstractType::Numeric => Err(ReificationErr::TooGeneral(
                 "Cannot reify a numeric value. Either define a default (int/fixed) or restrict type.".to_string(),
             )),
             AbstractType::Bool => Ok(ConcreteType::Bool),
@@ -191,15 +190,23 @@ fn build_complex_expression_type_checks() -> Expression {
     Conditional { cond: Box::new(const_true), cons: Box::new(addition), alt: Box::new(const3) }
 }
 
+fn tc_expr<Var: TcVar>(
+    mut tc: TypeChecker<AbstractType, Var>,
+    expr: &Expression,
+) -> Result<(TcKey, AbstractTypeTable<AbstractType>), TcErr<AbstractType>> {
+    let key = _tc_expr(&mut tc, expr)?;
+    let tt = tc.type_check()?;
+    Ok((key, tt))
+}
+
 /// This function traverses the expression tree.
 /// It creates keys on the fly.  This is not possible for many kinds of type systems, in which case the functions
 /// requires a context with a mapping of e.g. Variable -> Key.  The context can be built during a first pass over the
 /// tree.
-fn tc_expr<Var: TcVar>(
+fn _tc_expr<Var: TcVar>(
     tc: &mut TypeChecker<AbstractType, Var>,
     expr: &Expression,
 ) -> Result<TcKey, TcErr<AbstractType>> {
-    // TODO: ERROR TYPE
     use Expression::*;
     let key_result = tc.new_term_key(); // will be returned
     match expr {
@@ -214,17 +221,11 @@ fn tc_expr<Var: TcVar>(
         }
         ConstBool(_) => tc.impose(key_result.captures_concrete(ConcreteType::Bool))?,
         Conditional { cond, cons, alt } => {
-            let key_cond = tc_expr(tc, cond)?;
-            let key_cons = tc_expr(tc, cons)?;
-            let key_alt = tc_expr(tc, alt)?;
+            let key_cond = _tc_expr(tc, cond)?;
+            let key_cons = _tc_expr(tc, cons)?;
+            let key_alt = _tc_expr(tc, alt)?;
             tc.impose(key_cond.more_concrete_than_explicit(AbstractType::Bool))?;
-            // Two things to note regarding the next operation:
-            // The meet operation can fail.  Refer to `TypeChecker::check_conflicting(&mut self, TypeCheckerKey)` for
-            // detecting this case.  Moreover, if it fails, the conflicting type is persisted in the type table and
-            // propagated throughout the remaining type check.  If this is undesired due to the existence of an
-            // alternative type rule, refer to the snapshotting mechanism.
-            tc.impose(key_result.equate(key_cons))?;
-            tc.impose(key_result.equate(key_alt))?;
+            tc.impose(key_result.is_meet_of(key_cons, key_alt))?;
         }
         PolyFn { name: _, param_constraints, args, returns } => {
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
@@ -233,13 +234,13 @@ fn tc_expr<Var: TcVar>(
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
             &params;
             for (arg_ty, arg_expr) in args {
-                let arg_key = tc_expr(tc, arg_expr)?;
+                let arg_key = _tc_expr(tc, arg_expr)?;
                 match arg_ty {
                     ParamType::ParamId(id) => {
                         let (p_constr, p_key) = params[*id];
                         // We need to enforce that the parameter is more concrete than the passed argument and that the
                         // passed argument satisfies the constraints imposed on the parametric type.
-                        tc.impose(p_key.equate(arg_key))?;
+                        tc.impose(p_key.more_concrete_than(arg_key))?;
                         if let Some(c) = p_constr {
                             tc.impose(arg_key.more_concrete_than_explicit(c))?;
                         }
@@ -277,37 +278,27 @@ fn bound_by_concrete_transitive() {
     let second = tc.new_term_key();
     assert!(tc.impose(second.captures_concrete(ConcreteType::Int128)).is_ok());
     assert!(tc.impose(first.equate(second)).is_ok());
-    assert_eq!(tc.test_peek(first), tc.test_peek(second));
+    let tt = tc.type_check().expect("unexpected type error").as_hashmap();
+    assert_eq!(tt[&first], tt[&second]);
 }
 
 #[test]
 fn complex_type_check() {
     let expr = build_complex_expression_type_checks();
-    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
-    let res = tc_expr(&mut tc, &expr);
-    match res {
-        Ok(key) => {
-            let res_type = tc.test_peek(key);
-            // Expression `if true then 2.7^3 + 4.3 else 3` should yield type Fixed(3, 3) because the addition requires a
-            // Fixed(2,3) and a Fixed(3,3), which results in a Fixed(3, 3).
-            assert_eq!(res_type, &AbstractType::Fixed(3, 3));
-        }
-        Err(_) => panic!("Unexpected type error!"),
-    }
+    let tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
+    let (key, tt) = tc_expr(tc, &expr).expect("unexpected type error");
+    // Expression `if true then 2.7^3 + 4.3 else 3` should yield type Fixed(3, 3) because the addition requires a
+    // Fixed(2,3) and a Fixed(3,3), which results in a Fixed(3, 3).
+    assert_eq!(tt.as_hashmap()[&key], AbstractType::Fixed(3, 3));
 }
 
 #[test]
 fn failing_type_check() {
     let expr = build_type_error();
-    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
+    let tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
     // Expression `4.3 + false` should yield an error.
-    let res = tc_expr(&mut tc, &expr);
-    match res {
-        Ok(key) => {
-            let res_type = tc.test_peek(key);
-            panic!("Unexpectedly got result type {:?}", res_type);
-        }
-        Err(_) => {}
+    if let Ok((key, tt)) = tc_expr(tc, &expr) {
+        panic!("unexpectedly got result type {:?}", tt.as_hashmap()[&key]);
     }
 }
 
@@ -364,13 +355,33 @@ fn test_asym_separation() {
     let c_type = AbstractType::Integer(12);
 
     tc.impose(key_a.more_concrete_than_explicit(a_type)).unwrap();
-
     tc.impose(key_b.more_concrete_than(key_a)).unwrap();
-
-    tc.impose(key_c.more_concrete_than_explicit(c_type)).unwrap();
     tc.impose(key_b.equate(key_c)).unwrap();
+    tc.impose(key_c.more_concrete_than_explicit(c_type)).unwrap();
 
-    let tt = tc.type_check().expect("Unexpected type error.").as_hashmap();
+    let tt = tc.type_check().expect("unexpected type error.").as_hashmap();
+    assert_eq!(tt[&key_b], tt[&key_c]);
+    assert_eq!(tt[&key_a], a_type);
+    assert_eq!(tt[&key_b], c_type);
+    assert_eq!(tt[&key_c], c_type);
+}
+
+#[test]
+fn test_meet() {
+    let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
+    let key_a = tc.new_term_key();
+    let key_b = tc.new_term_key();
+    let key_c = tc.new_term_key();
+
+    let a_type = AbstractType::Integer(3);
+    let c_type = AbstractType::Integer(12);
+
+    tc.impose(key_a.more_concrete_than_explicit(a_type)).unwrap();
+    tc.impose(key_c.more_concrete_than_explicit(c_type)).unwrap();
+
+    tc.impose(key_b.is_meet_of(key_a, key_c)).unwrap();
+
+    let tt = tc.type_check().expect("unexpected type error.").as_hashmap();
     assert_eq!(tt[&key_b], tt[&key_c]);
     assert_eq!(tt[&key_a], a_type);
     assert_eq!(tt[&key_b], c_type);

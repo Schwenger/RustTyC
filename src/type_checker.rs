@@ -57,17 +57,6 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
         TypeChecker { keys: Vec::new(), variables: HashMap::new(), graph: ConstraintGraph::new() }
     }
 
-    #[cfg(test)]
-    pub fn test_peek(&self, key: TcKey) -> &AbsTy {
-        self.peek(key)
-    }
-
-    /// Not necessarily the final result, use with caution!
-    #[allow(dead_code)]
-    fn peek(&self, key: TcKey) -> &AbsTy {
-        self.graph.peek(key)
-    }
-
     fn next_key(&self) -> TcKey {
         TcKey::new(self.keys.len())
     }
@@ -114,7 +103,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             Constraint::Conjunction(cs) => {
                 cs.into_iter().map(|c| self.impose(c)).collect::<Result<(), TcErr<AbsTy>>>()?
             }
-            Constraint::Equal(a, b) => self.graph.equate(a, b),
+            Constraint::Equal(a, b) => self.graph.equate(a, b)?,
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
             Constraint::Variant(target, variant) => self.graph.register_variant(target, variant)?,

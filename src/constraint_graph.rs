@@ -119,11 +119,11 @@ impl<T: Abstract> ConstraintGraph<T> {
     }
 
     /// Declares a symmetric relation between two keys.
-    pub(crate) fn equate(&mut self, left: TcKey, right: TcKey) {
+    pub(crate) fn equate(&mut self, left: TcKey, right: TcKey) -> Result<(), TcErr<T>> {
         let left = self.repr_from_key(left).this;
         let right = self.repr_from_key(right).this;
         let (rep, sub) = if left < right { (left, right) } else { (right, left) };
-        self.establish_fwd(sub, rep);
+        self.establish_fwd(sub, rep)
     }
 
     /// Imposes an explicit bound on a key.  An Err return indicates a contradiction, an Ok does not indicate the absence of a contradiction.
@@ -134,8 +134,10 @@ impl<T: Abstract> ConstraintGraph<T> {
     // INTERNAL HELPER FUNCTIONS
 
     /// Transforms `sub` into a forward to `repr`.
-    fn establish_fwd(&mut self, sub: VertexRef, repr: VertexRef) {
-        let FullVertex { this, key, .. } = *self.repr(sub);
+    fn establish_fwd(&mut self, sub: VertexRef, repr: VertexRef) -> Result<(), TcErr<T>> {
+        let FullVertex { this, key, ref ty, .. } = *self.repr(sub);
+        let repr_v = self.repr(repr);
+        let new_ty = repr_v.ty.meet(ty).map_err(|e| TcErr::KeyEquation(key, repr_v.key, e))?;
         assert_eq!(this, sub, "Cannot establish a forward for a vertex that already is a forward.");
         let mut local = Vertex::Fwd { key, this, repr };
         std::mem::swap(&mut self.vertices[local.this()], &mut local);
@@ -150,20 +152,22 @@ impl<T: Abstract> ConstraintGraph<T> {
             .iter()
             .zip(sub.children.iter())
             .map(|(c1, c2)| match (c1, c2) {
-                (None, x) | (x, None) => *x,
+                (None, x) | (x, None) => Ok(*x),
                 (Some(c1), Some(c2)) => {
                     let v1 = self.repr(*c1).key;
                     let v2 = self.repr(*c2).key;
-                    self.equate(v1, v2);
-                    Some(self.repr(*c1).this) // the repr might have changed.
+                    self.equate(v1, v2)?;
+                    Ok(Some(self.repr(*c1).this)) // the repr might have changed.
                 }
             })
-            .collect();
+            .collect::<Result<Vec<Option<usize>>, TcErr<T>>>()?;
 
         // Commit changes
         let mut rep_v = self.repr_mut(repr);
         rep_v.upper_bounds.extend(sub.upper_bounds.iter());
         rep_v.children = new_children;
+        rep_v.ty = new_ty;
+        Ok(())
     }
 
     /// Registers that `target` is of the given variant.  Also applies all constraints entailed by this relation.
@@ -216,10 +220,6 @@ impl<T: Abstract> ConstraintGraph<T> {
     }
 
     // ACCESS LOGIC
-
-    pub(crate) fn peek(&self, key: TcKey) -> &T {
-        &self.repr_from_key(key).ty
-    }
 
     fn next_ref(&self) -> VertexRef {
         self.vertices.len()
