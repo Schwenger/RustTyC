@@ -1,7 +1,7 @@
 [package]
 name = "rusttyc"
-version = "0.2.3"
-authors = ["Maximilian Schwenger <schwenger@react.uni-saarland.de>"]
+version = "0.3.0"
+authors = ["Maximilian Schwenger <maximilian.schwenger@cispa.saarland>"]
 edition = "2018"
 license = "MIT"
 description = "A library for writing type checkers with a lattice-like type system in rust."
