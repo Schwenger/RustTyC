@@ -4,14 +4,14 @@
 //! * [`Abstract`](trait.Abstract.html) is a trait representing abstract types that will
 //! be inferred during the type checking procedure.
 //! * Reification is the process of transforming an abstract type into a concrete one.  
-//! This process can be fallible or infallible, reoresented by [`Reifiable`](trait.Reifiable.html),
+//! This process can be fallible or infallible, represented by [`Reifiable`](trait.Reifiable.html),
 //! [`TryReifiable`](trait.TryReifiable.html), and [`ReificationErr`](enum.ReificationErr.html).
 //! * Generalization is the infallible process of transforming a concrete type into an abstract one represented by [`Generalizable`](trait.Generalizable.html)
-//! * [`TypeTable`](trait.TypeTable.html) contains a mapping from a [`TcKey`](struct.TcKey.html) to an [`Abstract`](trait.Abstract.html) or reified type.
+//! * [`TypeTable`](trait.TypeTable.html) contains a mapping from a [`TcKey`](../struct.TcKey.html) to an [`Abstract`](trait.Abstract.html) or reified type.
 
 use crate::TcKey;
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::Index};
 
 /// An abstract type that will be inferred during the type checking procedure.
 ///
@@ -44,7 +44,7 @@ use std::fmt::Debug;
 /// A consequence is that the meet of two types with different tag will result in an error if both tags are defined.
 ///
 /// # Example
-/// For a full example of an abstract type system, refer to the [lib documentation](..) and the examples. TODO: link!
+/// For a full example of an abstract type system, refer to the [crate documentation](../index.html) and the examples. TODO: link!
 ///
 pub trait Abstract: Eq + Sized + Clone + Debug {
     /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
@@ -137,8 +137,8 @@ pub trait Generalizable {
 
 /// A trait representing a type table.
 ///
-/// It maps [`TcKey`](struct.TcKey.html) to `Self::Type` and allows for an automatic transformation into a hashmap.
-pub trait TypeTable {
+/// It maps [`TcKey`](../struct.TcKey.html) to `Self::Type` and allows for an automatic transformation into a hashmap.
+pub trait TypeTable: Index<TcKey> {
     /// The (rust-) type of the (external-) type stored in this type table.
     type Type;
 
@@ -147,13 +147,20 @@ pub trait TypeTable {
 }
 
 /// An implementation of [`TypeTable`](trait.TypeTable.html) for type implementing [`Abstract`](trait.Abstract.html).
-/// See [`ConcreteTypeTable`](struct.ConcreteTypeTable.html) for an implementation specializing on
+/// See [`ReifiedTypeTable`](struct.ReifiedTypeTable.html) for an implementation specializing on
 /// concrete types.
 ///
 /// Can automatically be generated from a `HashMap<TcKey, AbsTy>` for `AbsTy: Abstract`.
 #[derive(Debug, Clone)]
 pub struct AbstractTypeTable<AbsTy: Abstract> {
     table: HashMap<TcKey, AbsTy>,
+}
+
+impl<AbsTy: Abstract> Index<TcKey> for AbstractTypeTable<AbsTy> {
+    type Output = AbsTy;
+    fn index(&self, index: TcKey) -> &Self::Output {
+        &self.table[&index]
+    }
 }
 
 impl<AbsTy: Abstract> From<HashMap<TcKey, AbsTy>> for AbstractTypeTable<AbsTy> {
@@ -170,6 +177,13 @@ impl<AbsTy: Abstract> From<HashMap<TcKey, AbsTy>> for AbstractTypeTable<AbsTy> {
 #[derive(Debug, Clone)]
 pub struct ReifiedTypeTable<Concrete> {
     table: HashMap<TcKey, Concrete>,
+}
+
+impl<Concrete> Index<TcKey> for ReifiedTypeTable<Concrete> {
+    type Output = Concrete;
+    fn index(&self, index: TcKey) -> &Self::Output {
+        &self.table[&index]
+    }
 }
 
 impl<Concrete> From<HashMap<TcKey, Concrete>> for ReifiedTypeTable<Concrete> {

@@ -7,7 +7,7 @@ use std::hash::Hash;
 
 /// Represents a re-usable variable in the type checking procedure.  
 ///
-/// TcKeys for variables will be managed by the `TypeChecker`.
+/// [`TcKey`](struct.TcKey.html)s for variables will be managed by the `TypeChecker`.
 pub trait TcVar: Debug + Eq + Hash + Clone {}
 
 /// The `TypeChecker` is the main interaction point for the type checking procedure.
@@ -22,12 +22,12 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 /// The type checker manages keys for variables.
 /// * `Constraint`s represent dependencies between keys and types.  They can only be created using [`TcKey`](struct.TcKey.html).
 /// * [`Abstract`](trait.Abstract.html) is an external data type that constitutes a potentially unresolved type.
-/// * [`TcErr`](struct.TcErr.html) is a wrapper for `Abstract::Err` that contains additional information on what went wrong.
-/// * `[`AbstractTypeTable`](struct.AbstractTypeTable.html) maps keys to abstract types.
+/// * [`TcErr`](enum.TcErr.html) is a wrapper for `Abstract::Err` that contains additional information on what went wrong.
+/// * [`AbstractTypeTable`](struct.AbstractTypeTable.html) maps keys to abstract types.
 ///
 /// # Process
 /// In the first step after creation, the `TypeChecker` generates keys and collects information.  It may already resolve some constraints
-/// and reveal contradictions.  This prompts it to return a negative result with a [`TcErr`](struct.TcErr.html).
+/// and reveal contradictions.  This prompts it to return a negative result with a [`TcErr`](enum.TcErr.html).
 /// When all information is collected, it resolves them and generates a type table that contains the least restrictive abstract type for
 /// each registered key.
 ///
@@ -36,7 +36,7 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 /// type table indicates that all constraints can be satisfied.
 ///
 /// # Example
-/// TODO: Example
+/// See [`crate documentation`](index.html).
 #[derive(Debug, Clone)]
 pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
     variables: HashMap<Var, TcKey>,
@@ -84,7 +84,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
 
     /// Provides a key to the `nth` child of the type behind `parent`.
     /// This imposes the restriction that `parent` resolves to a type that has at least `nth` dependent sub-types.
-    /// If this imposition immediately leads to a contradiction, an [`TcErr`]: ./TcErr.html is returned.
+    /// If this imposition immediately leads to a contradiction, an [`TcErr`](enum.TcErr.html) is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
     pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<AbsTy>> {
@@ -96,8 +96,8 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
         Ok(child)
     }
 
-    /// Imposes a constraint on keys.  They can be obtained by using the associated functions of `[`TcKey`]: ../keys/TcKey.html.
-    /// Returns a [`TcErr`]: ./TcErr.html if the constraint immediately reveals a contradiction.
+    /// Imposes a constraint on keys.  They can be obtained by using the associated functions of [`TcKey`](struct.TcKey.html).
+    /// Returns a [`TcErr`](enum.TcErr.html) if the constraint immediately reveals a contradiction.
     pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), TcErr<AbsTy>> {
         match constr {
             Constraint::Conjunction(cs) => {
