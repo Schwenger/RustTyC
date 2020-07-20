@@ -20,3 +20,7 @@ Forget everything that was there before.
 ### Add
 
 * Shortcuts to declare meet operations as symmetric.
+
+### Rename
+
+* Improved some name when generating constraints with keys.

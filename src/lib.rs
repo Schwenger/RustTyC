@@ -75,10 +75,10 @@
 //! // We type check `x = 0b111 ^ 0b11010`, so x needs 5 bits.
 //! let t1 = tc.new_term_key();
 //! // The term is an int with at least a width of 3 bits.
-//! tc.impose(t1.more_concrete_than_explicit(MyType::Integer(3)))?;
+//! tc.impose(t1.concretizes_explicit(MyType::Integer(3)))?;
 //! let t2 = tc.new_term_key();
 //! // The term is an int with at least a width of 5 bits.
-//! tc.impose(t2.more_concrete_than_explicit(MyType::Integer(5)))?;
+//! tc.impose(t2.concretizes_explicit(MyType::Integer(5)))?;
 //! let tx = tc.new_term_key(); // t3 is the combination of t1 and t2, e.g. addition.
 //! tc.impose(tx.is_meet_of(t1, t2))?; // Addition is the meet of both types.
 //! let type_table = tc.type_check()?;

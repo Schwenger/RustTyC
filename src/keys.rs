@@ -13,7 +13,7 @@ use std::hash::Hash;
 #[must_use = "the creation of a `TypeConstraint` has no effect, it should be passed to a `TypeChecker`"]
 #[derive(Debug, Clone)]
 pub enum Constraint<AbsTy: Abstract> {
-    /// Equates two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
+    /// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
     #[doc(hidden)]
     Equal(TcKey, TcKey),
 
@@ -164,10 +164,10 @@ pub enum Constraint<AbsTy: Abstract> {
 /// let key3 = tc.new_term_key();
 /// let key4 = tc.new_term_key();
 ///
-/// tc.impose(key1.more_concrete_than_explicit(MyType::Numeric))?;  // key1 is numeric.
+/// tc.impose(key1.concretizes_explicit(MyType::Numeric))?;  // key1 is numeric.
 /// // key2 is at least as concrete as k1, i.e. it will also be numeric.
-/// tc.impose(key2.more_concrete_than(key1))?;
-/// tc.impose(key3.equate(key2))?; // key3 is the same type as key2, i.e., numeric
+/// tc.impose(key2.concretizes(key1))?;
+/// tc.impose(key3.equate_with(key2))?; // key3 is the same type as key2, i.e., numeric
 ///
 /// let tt = tc.clone().type_check()?;
 /// assert_eq!(tt[key1], MyType::Numeric);
@@ -179,7 +179,7 @@ pub enum Constraint<AbsTy: Abstract> {
 /// // Concretize key3 to be a UInt.  Also affects key2 due to unification.  
 /// // key1 is unaffected because of the asymmetric relation between key1 and key2,
 /// // which translates to an asymmetric relation between key1 and key3 as well.
-/// tc.impose(key3.more_concrete_than_explicit(MyType::UInt))?;
+/// tc.impose(key3.concretizes_explicit(MyType::UInt))?;
 ///
 /// let tt = tc.clone().type_check()?;
 /// assert_eq!(tt[key1], MyType::Numeric);
@@ -190,9 +190,9 @@ pub enum Constraint<AbsTy: Abstract> {
 /// // key4 is more concrete than both key2 (and transitively key3), and key1, so it becomes a UInt.
 /// tc.impose(key4.is_meet_of(key2, key1))?;
 /// // Make key2 and key3 U8.  key4 depends on them, so it becomes U8 as well.  key1 is unaffected.
-/// tc.impose(key2.more_concrete_than_explicit(MyType::U8))?;
+/// tc.impose(key2.concretizes_explicit(MyType::U8))?;
 /// let key5 = tc.new_term_key();
-/// tc.impose(key5.more_concrete_than_explicit(MyType::String))?; // key5 is a string.
+/// tc.impose(key5.concretizes_explicit(MyType::String))?; // key5 is a string.
 ///
 /// let tt = tc.clone().type_check()?;
 /// assert_eq!(tt[key1], MyType::Numeric);
@@ -224,15 +224,15 @@ impl TcKey {
 
 impl TcKey {
     /// Connects two keys asymmetrically.  Refining `bound` refines `self` whereas refining `self` leaves `bound` unaffected.
-    pub fn more_concrete_than<AbsTy: Abstract>(self, bound: Self) -> Constraint<AbsTy> {
+    pub fn concretizes<AbsTy: Abstract>(self, bound: Self) -> Constraint<AbsTy> {
         Constraint::MoreConc { target: self, bound }
     }
-    /// Equates two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
-    pub fn equate<AbsTy: Abstract>(self, other: Self) -> Constraint<AbsTy> {
+    /// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
+    pub fn equate_with<AbsTy: Abstract>(self, other: Self) -> Constraint<AbsTy> {
         Constraint::Equal(self, other)
     }
     /// Declares that `self` is at least as concrete as `bound`.
-    pub fn more_concrete_than_explicit<AbsTy: Abstract>(self, bound: AbsTy) -> Constraint<AbsTy> {
+    pub fn concretizes_explicit<AbsTy: Abstract>(self, bound: AbsTy) -> Constraint<AbsTy> {
         Constraint::MoreConcExplicit(self, bound)
     }
     /// Declares that `self` is the meet of `left` and `right`.  
@@ -243,7 +243,7 @@ impl TcKey {
     /// Declares that `self` is the meet of all elements contained in `elems`.  
     /// This binds `self` to all of these keys asymmetrically.
     pub fn is_meet_of_all<AbsTy: Abstract>(self, elems: &[Self]) -> Constraint<AbsTy> {
-        Constraint::Conjunction(elems.iter().map(|e| self.more_concrete_than(*e)).collect())
+        Constraint::Conjunction(elems.iter().map(|e| self.concretizes(*e)).collect())
     }
     /// Declares that `self` is the symmetric meet of `left` and `right`.  
     /// This binds `self` to both `left` and `right` symmetrically.
@@ -253,13 +253,13 @@ impl TcKey {
     /// Declares that `self` is the symmetric meet of all elements contained in `elems`.  
     /// This binds `self` to all of these keys symmetrically.
     pub fn is_sym_meet_of_all<AbsTy: Abstract>(self, elems: &[Self]) -> Constraint<AbsTy> {
-        Constraint::Conjunction(elems.iter().map(|e| self.equate(*e)).collect())
+        Constraint::Conjunction(elems.iter().map(|e| self.equate_with(*e)).collect())
     }
     /// Declares that `self` is at least as concrete as the abstracted version of `conc`.
-    pub fn captures_concrete<AbsTy: Abstract, CT>(self, conc: CT) -> Constraint<AbsTy>
+    pub fn concretizes_concrete<AbsTy: Abstract, CT>(self, conc: CT) -> Constraint<AbsTy>
     where
         CT: Generalizable<Generalized = AbsTy>,
     {
-        self.more_concrete_than_explicit(conc.generalize())
+        self.concretizes_explicit(conc.generalize())
     }
 }

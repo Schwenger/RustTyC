@@ -201,19 +201,19 @@ fn _tc_expr<Var: TcVar>(
     match expr {
         ConstInt(c) => {
             let width = (128 - c.leading_zeros()).try_into().unwrap();
-            tc.impose(key_result.more_concrete_than_explicit(AbstractType::Integer(width)))?;
+            tc.impose(key_result.concretizes_explicit(AbstractType::Integer(width)))?;
         }
         ConstFixed(i, f) => {
             let int_width = (64 - i.leading_zeros()).try_into().unwrap();
             let frac_width = (64 - f.leading_zeros()).try_into().unwrap();
-            tc.impose(key_result.more_concrete_than_explicit(AbstractType::Fixed(int_width, frac_width)))?;
+            tc.impose(key_result.concretizes_explicit(AbstractType::Fixed(int_width, frac_width)))?;
         }
-        ConstBool(_) => tc.impose(key_result.captures_concrete(ConcreteType::Bool))?,
+        ConstBool(_) => tc.impose(key_result.concretizes_concrete(ConcreteType::Bool))?,
         Conditional { cond, cons, alt } => {
             let key_cond = _tc_expr(tc, cond)?;
             let key_cons = _tc_expr(tc, cons)?;
             let key_alt = _tc_expr(tc, alt)?;
-            tc.impose(key_cond.more_concrete_than_explicit(AbstractType::Bool))?;
+            tc.impose(key_cond.concretizes_explicit(AbstractType::Bool))?;
             tc.impose(key_result.is_meet_of(key_cons, key_alt))?;
         }
         PolyFn { name: _, param_constraints, args, returns } => {
@@ -229,22 +229,22 @@ fn _tc_expr<Var: TcVar>(
                         let (p_constr, p_key) = params[*id];
                         // We need to enforce that the parameter is more concrete than the passed argument and that the
                         // passed argument satisfies the constraints imposed on the parametric type.
-                        tc.impose(p_key.more_concrete_than(arg_key))?;
+                        tc.impose(p_key.concretizes(arg_key))?;
                         if let Some(c) = p_constr {
-                            tc.impose(arg_key.more_concrete_than_explicit(c))?;
+                            tc.impose(arg_key.concretizes_explicit(c))?;
                         }
                     }
-                    ParamType::Abstract(at) => tc.impose(arg_key.more_concrete_than_explicit(*at))?,
+                    ParamType::Abstract(at) => tc.impose(arg_key.concretizes_explicit(*at))?,
                 };
             }
             match returns {
-                ParamType::Abstract(at) => tc.impose(key_result.more_concrete_than_explicit(*at))?,
+                ParamType::Abstract(at) => tc.impose(key_result.concretizes_explicit(*at))?,
                 ParamType::ParamId(id) => {
                     let (constr, key) = params[*id];
                     if let Some(c) = constr {
-                        tc.impose(key_result.more_concrete_than_explicit(c))?;
+                        tc.impose(key_result.concretizes_explicit(c))?;
                     }
-                    tc.impose(key_result.equate(key))?;
+                    tc.impose(key_result.equate_with(key))?;
                 }
             }
         }
@@ -265,8 +265,8 @@ fn bound_by_concrete_transitive() {
     let mut tc: TypeChecker<AbstractType, Variable> = TypeChecker::new();
     let first = tc.new_term_key();
     let second = tc.new_term_key();
-    assert!(tc.impose(second.captures_concrete(ConcreteType::Int128)).is_ok());
-    assert!(tc.impose(first.equate(second)).is_ok());
+    assert!(tc.impose(second.concretizes_concrete(ConcreteType::Int128)).is_ok());
+    assert!(tc.impose(first.equate_with(second)).is_ok());
     let tt = tc.type_check().expect("unexpected type error").as_hashmap();
     assert_eq!(tt[&first], tt[&second]);
 }
@@ -311,9 +311,9 @@ fn test_asym_simple() {
     let key_a = tc.new_term_key();
     let key_b = tc.new_term_key();
 
-    tc.impose(key_a.more_concrete_than_explicit(AbstractType::Integer(3))).unwrap();
+    tc.impose(key_a.concretizes_explicit(AbstractType::Integer(3))).unwrap();
 
-    tc.impose(key_b.more_concrete_than(key_a)).unwrap();
+    tc.impose(key_b.concretizes(key_a)).unwrap();
 
     let tt = tc.type_check().expect("Unexpected type error.").as_hashmap();
     assert_eq!(tt[&key_a], tt[&key_b]);
@@ -325,9 +325,9 @@ fn test_asym_order() {
     let key_a = tc.new_term_key();
     let key_b = tc.new_term_key();
 
-    tc.impose(key_b.more_concrete_than(key_a)).unwrap();
+    tc.impose(key_b.concretizes(key_a)).unwrap();
 
-    tc.impose(key_a.more_concrete_than_explicit(AbstractType::Integer(3))).unwrap();
+    tc.impose(key_a.concretizes_explicit(AbstractType::Integer(3))).unwrap();
 
     let tt = tc.type_check().expect("Unexpected type error.").as_hashmap();
     assert_eq!(tt[&key_a], tt[&key_b]);
@@ -343,10 +343,10 @@ fn test_asym_separation() {
     let a_type = AbstractType::Integer(3);
     let c_type = AbstractType::Integer(12);
 
-    tc.impose(key_a.more_concrete_than_explicit(a_type)).unwrap();
-    tc.impose(key_b.more_concrete_than(key_a)).unwrap();
-    tc.impose(key_b.equate(key_c)).unwrap();
-    tc.impose(key_c.more_concrete_than_explicit(c_type)).unwrap();
+    tc.impose(key_a.concretizes_explicit(a_type)).unwrap();
+    tc.impose(key_b.concretizes(key_a)).unwrap();
+    tc.impose(key_b.equate_with(key_c)).unwrap();
+    tc.impose(key_c.concretizes_explicit(c_type)).unwrap();
 
     let tt = tc.type_check().expect("unexpected type error.").as_hashmap();
     assert_eq!(tt[&key_b], tt[&key_c]);
@@ -365,8 +365,8 @@ fn test_meet() {
     let a_type = AbstractType::Integer(3);
     let c_type = AbstractType::Integer(12);
 
-    tc.impose(key_a.more_concrete_than_explicit(a_type)).unwrap();
-    tc.impose(key_c.more_concrete_than_explicit(c_type)).unwrap();
+    tc.impose(key_a.concretizes_explicit(a_type)).unwrap();
+    tc.impose(key_c.concretizes_explicit(c_type)).unwrap();
 
     tc.impose(key_b.is_meet_of(key_a, key_c)).unwrap();
 

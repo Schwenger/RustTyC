@@ -187,19 +187,19 @@ fn tc_expr(tc: &mut TypeChecker<AbstractType, Variable>, expr: &Expression) -> R
     match expr {
         ConstInt(c) => {
             let width = (128 - c.leading_zeros()).try_into().unwrap();
-            tc.impose(key_result.more_concrete_than_explicit(AbstractType::Integer(width)))?;
+            tc.impose(key_result.concretizes_explicit(AbstractType::Integer(width)))?;
         }
         ConstFixed(i, f) => {
             let int_width = (64 - i.leading_zeros()).try_into().unwrap();
             let frac_width = (64 - f.leading_zeros()).try_into().unwrap();
-            tc.impose(key_result.more_concrete_than_explicit(AbstractType::Fixed(int_width, frac_width)))?;
+            tc.impose(key_result.concretizes_explicit(AbstractType::Fixed(int_width, frac_width)))?;
         }
-        ConstBool(_) => tc.impose(key_result.captures_concrete(ConcreteType::Bool))?,
+        ConstBool(_) => tc.impose(key_result.concretizes_concrete(ConcreteType::Bool))?,
         Conditional { cond, cons, alt } => {
             let key_cond = tc_expr(tc, cond)?;
             let key_cons = tc_expr(tc, cons)?;
             let key_alt = tc_expr(tc, alt)?;
-            tc.impose(key_cond.more_concrete_than_explicit(AbstractType::Bool))?;
+            tc.impose(key_cond.concretizes_explicit(AbstractType::Bool))?;
             // Two things to note regarding the next operation:
             // The meet operation can fail.  Refer to `TypeChecker::check_conflicting(&mut self, TypeCheckerKey)` for
             // detecting this case.  Moreover, if it fails, the conflicting type is persisted in the type table and
@@ -219,22 +219,22 @@ fn tc_expr(tc: &mut TypeChecker<AbstractType, Variable>, expr: &Expression) -> R
                         let (p_constr, p_key) = params[*id];
                         // We need to enforce that the parameter is more concrete than the passed argument and that the
                         // passed argument satisfies the constraints imposed on the parametric type.
-                        tc.impose(p_key.more_concrete_than(arg_key))?;
+                        tc.impose(p_key.concretizes(arg_key))?;
                         if let Some(c) = p_constr {
-                            tc.impose(arg_key.more_concrete_than_explicit(c))?;
+                            tc.impose(arg_key.concretizes_explicit(c))?;
                         }
                     }
-                    ParamType::Abstract(at) => tc.impose(arg_key.more_concrete_than_explicit(*at))?,
+                    ParamType::Abstract(at) => tc.impose(arg_key.concretizes_explicit(*at))?,
                 };
             }
             match returns {
-                ParamType::Abstract(at) => tc.impose(key_result.more_concrete_than_explicit(*at))?,
+                ParamType::Abstract(at) => tc.impose(key_result.concretizes_explicit(*at))?,
                 ParamType::ParamId(id) => {
                     let (constr, key) = params[*id];
                     if let Some(c) = constr {
-                        tc.impose(key_result.more_concrete_than_explicit(c))?;
+                        tc.impose(key_result.concretizes_explicit(c))?;
                     }
-                    tc.impose(key_result.more_concrete_than(key))?;
+                    tc.impose(key_result.concretizes(key))?;
                 }
             }
         }
