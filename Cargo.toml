@@ -1,6 +1,6 @@
 [package]
 name = "rusttyc"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Maximilian Schwenger <maximilian.schwenger@cispa.saarland>"]
 edition = "2018"
 license = "MIT"
