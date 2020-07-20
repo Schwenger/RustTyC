@@ -45,7 +45,6 @@ impl rusttyc::TcVar for Variable {}
 
 impl Abstract for AbstractType {
     type Err = String;
-    type VariantTag = Variant;
 
     fn unconstrained() -> Self {
         AbstractType::Any
@@ -66,24 +65,22 @@ impl Abstract for AbstractType {
             (Numeric, Numeric) => Ok(Numeric),
         }
     }
-    fn variant(&self) -> Option<Self::VariantTag> {
+    fn arity(&self) -> Option<usize> {
         match self {
-            Self::Bool => Some(Variant::Bool),
-            Self::Fixed(_, _) => Some(Variant::Fixed),
-            Self::Integer(_) => Some(Variant::Integer),
+            Self::Bool | Self::Fixed(_, _) | Self::Integer(_) => Some(0),
             _ => None,
         }
     }
-    fn variant_arity(_tag: Self::VariantTag) -> usize {
-        0
+
+    fn with_children<I>(&self, children: I) -> Self
+    where
+        I: IntoIterator<Item = Self>,
+    {
+        assert!(children.into_iter().collect::<Vec<Self>>().is_empty());
+        self.clone()
     }
-    fn from_tag(tag: Self::VariantTag, children: Vec<Self>) -> Self {
-        assert!(children.is_empty());
-        match tag {
-            Variant::Integer => Self::Integer(0),
-            Variant::Fixed => Self::Fixed(0, 0),
-            Variant::Bool => Self::Bool,
-        }
+    fn nth_child(&self, _: usize) -> &Self {
+        panic!("will not be called")
     }
 }
 

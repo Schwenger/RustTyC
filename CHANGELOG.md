@@ -10,3 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Complete Revision of RustTyC
 
 Forget everything that was there before.
+
+## [0.3.1] - 20.07.2020
+
+### Remove
+
+* Requirement of implementing a VariantTag type.  Now uses immediate con- and destruction of types.

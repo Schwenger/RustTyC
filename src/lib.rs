@@ -38,15 +38,11 @@
 //! # }
 //! # use rusttyc::{TcVar, TypeChecker, types::Abstract, TcErr};
 //! type MyTypeErr = String;
-//! #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-//! enum MyVariant { Integer, Boolean }
 //! impl Abstract for MyType {
 //!     type Err = MyTypeErr;
-//!     type VariantTag = MyVariant;
-//!     fn variant(&self) -> Option<Self::VariantTag> {
+//!     fn arity(&self) -> Option<usize> {
 //!         match self {
-//!             MyType::Integer(_) => Some(MyVariant::Integer),
-//!             MyType::Boolean => Some(MyVariant::Boolean),
+//!             MyType::Integer(_) | MyType::Boolean => Some(0),
 //!             MyType::Unknown => None,
 //!         }
 //!     }
@@ -59,12 +55,15 @@
 //!             _ => Err(String::from("Cannot combine Boolean and Integer")),
 //!         }
 //!     }
-//!     fn variant_arity(tag: Self::VariantTag) -> usize { 0 }
-//!     fn from_tag(tag: Self::VariantTag, children: Vec<Self>) -> Self {
-//!         match tag {
-//!             MyVariant::Integer => MyType::Integer(0),
-//!             MyVariant::Boolean => MyType::Boolean,
-//!         }
+//!     fn with_children<I>(&self, children: I) -> Self
+//!     where
+//!         I: IntoIterator<Item = Self>,
+//!     {
+//!         assert!(children.into_iter().collect::<Vec<Self>>().is_empty());
+//!         self.clone()
+//!     }
+//!     fn nth_child(&self, _: usize) -> &Self {
+//!         panic!("will not be called")
 //!     }
 //! }
 //! #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]

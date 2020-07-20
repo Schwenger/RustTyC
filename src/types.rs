@@ -29,19 +29,18 @@ use std::{fmt::Debug, ops::Index};
 /// * Meeting two types returns the greatest upper bound, i.e., the type that is more or equally concrete to either argument _and_ there is no other, less concrete type meeting this requirement.
 /// This especially entails that meeting any type `T` with an unconstrained type returns `T`.
 ///
-/// ## Variants
-/// Type can have variants.  An integer, for example, has the 0-ary variant identifying it as integers.  An optional type on the other hand is 1-ary, i.e., it has one sub-type.
-/// Unconstrained type might not have a variant at all.
+/// ## Arity
+/// Type can be recursive, i.e., they have a number of subtypes, their "children".
+/// An integer, for example, has no children and is thus 0-ary.  An optional type on the other hand is 1-ary, i.e., it has one sub-type.
+/// During the inference process, the arity might be undetermined:  the unconstrained type will resolve to something with an arity, but the value is not clear, yet.
 ///
-/// The type checking procedure needs to construct and destruct types based on their variant.
-/// * _Construction_ works over `Abstract::from_tag` taking an array of children, i.e., sub-types, and returning an abstract type.
-/// * _Destruction_ works over `Abstract::variant` to obtain information about the variant itself plus `Abstract::variant_arity` to get its arity.  Access to individual subtypes is not required.
+/// The type checking procedure keeps track of types and their potential children.  
+/// For this, it requires some guarantees when it comes to the arity:
 ///
-/// ### Variant Stability
-/// Not every type has a defined variant.  However, it needs to comply with two rules:
-/// * If a type has a variant, it may not change when turning more concrete.  Thus, abstract types with ambiguous variants must not return a variant.
-/// * A leaf type, i.e., a fully resolved non-contradictory type must provide a variant.
-/// A consequence is that the meet of two types with different tag will result in an error if both tags are defined.
+/// ### Arity Stability
+/// * If a type has a defined arity, it may not change when turning more concrete.  Thus, abstract types with ambiguous arity must not return an arity.
+/// * A leaf type, i.e., a fully resolved non-contradictory type must provide an arity.
+/// A consequence is that the meet of two types with different, defined arity will result in an error.
 ///
 /// # Example
 /// For a full example of an abstract type system, refer to the [crate documentation](../index.html) and the examples. TODO: link!
@@ -50,13 +49,6 @@ pub trait Abstract: Eq + Sized + Clone + Debug {
     /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
     /// May contain information regarding why the meet failed.  
     type Err: Debug;
-
-    /// A type that represents different possible variants of the abstract type.
-    type VariantTag: Debug + Clone + Copy + PartialEq + Eq;
-
-    /// Returns the type variant of `self`, if it exists.
-    /// Refer to the documentation of [Abstract](trait.Abstract.html) for the responsibilities of this function.
-    fn variant(&self) -> Option<Self::VariantTag>;
 
     /// Returns the unconstrained, most abstract type.
     fn unconstrained() -> Self;
@@ -70,20 +62,21 @@ pub trait Abstract: Eq + Sized + Clone + Debug {
     /// Refer to the documentation of [Abstract](trait.Abstract.html) for the responsibilities of this function.
     fn meet(&self, other: &Self) -> Result<Self, Self::Err>;
 
-    /// Provides the arity of a variant.  May be 0.
-    fn variant_arity(tag: Self::VariantTag) -> usize;
+    /// Provides the arity of the `self` if the type is sufficiently resolved to determine it.
+    fn arity(&self) -> Option<usize>;
 
-    /// Provides the arity of the variant of `self` if it is defined.
-    fn arity(&self) -> Option<usize> {
-        self.variant().map(Self::variant_arity)
-    }
+    /// Provide access to the nth child.
+    /// # Guarantee
+    /// The arity of `self` is defined and greater or equal to `n`: `assert!(self.arity.map(|a| *a >= n).unwrap_or(false)`
+    fn nth_child(&self, n: usize) -> &Self;
 
-    /// Creates an abstract type based with the given `tag` and `children`.  
-    /// It is guaranteed that `Self::variant_arity(tag) == children.len()`.
-    ///
-    /// # Panics
-    /// May panic if `Self::variant_arity(tag) != children.len()`.
-    fn from_tag(tag: Self::VariantTag, children: Vec<Self>) -> Self;
+    /// Generate an instance of Self that is equivalent to `self` except that the children of the newly generated type will be
+    /// `children`.
+    /// # Guarantee
+    /// The arity of `self` is defined and corresponds to the number of element in `children`: assert!(self.arity.map(|a| a == children.collect::<Vec<Self>>().len()).unwrap_or(false))`
+    fn with_children<I>(&self, children: I) -> Self
+    where
+        I: IntoIterator<Item = Self>;
 }
 
 /// Indicates that an abstract type could not be reified because it is too general or too restrictive.

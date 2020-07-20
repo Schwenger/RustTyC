@@ -34,10 +34,6 @@ pub enum Constraint<AbsTy: Abstract> {
     /// A conjunction of several constraints.
     #[doc(hidden)]
     Conjunction(Vec<Self>),
-
-    /// Declares that the key needs to resolve to a type with the given variant.
-    #[doc(hidden)]
-    Variant(TcKey, AbsTy::VariantTag),
 }
 
 /// An inexpensive and simple indexing mechanism using during the type checking procedure.
@@ -69,16 +65,15 @@ pub enum Constraint<AbsTy: Abstract> {
 ///
 /// impl Abstract for MyType {
 ///     type Err = String;
-///     type VariantTag = MyVariant;
-///     fn from_tag(tag: Self::VariantTag, children: Vec<Self>) -> Self {
-///         assert!(children.is_empty());
-///         match tag {
-///             MyVariant::String => MyType::String,
-///             MyVariant::U8 => MyType::U8,
-///         }
+///     fn with_children<I>(&self, children: I) -> Self
+///     where
+///         I: IntoIterator<Item = Self>,
+///     {
+///         assert!(children.into_iter().collect::<Vec<Self>>().is_empty());
+///         self.clone()
 ///     }
-///     fn variant_arity(_tag: Self::VariantTag) -> usize {
-///         0
+///     fn nth_child(&self, _: usize) -> &Self {
+///         panic!("will not be called")
 ///     }
 ///     fn meet(&self, other: &Self) -> Result<Self, Self::Err> {
 ///         use MyType::*;
@@ -94,10 +89,9 @@ pub enum Constraint<AbsTy: Abstract> {
 ///     fn unconstrained() -> Self {
 ///         Self::Top
 ///     }
-///     fn variant(&self) -> Option<Self::VariantTag> {
+///     fn arity(&self) -> Option<usize> {
 ///         match self {
-///             Self::String => Some(MyVariant::String),
-///             Self::U8 => Some(MyVariant::U8),
+///             Self::String | Self::U8 => Some(0),
 ///             _ => None,
 ///         }
 ///     }
@@ -128,16 +122,15 @@ pub enum Constraint<AbsTy: Abstract> {
 /// #
 /// # impl Abstract for MyType {
 /// #     type Err = String;
-/// #     type VariantTag = MyVariant;
-/// #     fn from_tag(tag: Self::VariantTag, children: Vec<Self>) -> Self {
-/// #         assert!(children.is_empty());
-/// #         match tag {
-/// #             MyVariant::String => MyType::String,
-/// #             MyVariant::U8 => MyType::U8,
-/// #         }
+/// #     fn with_children<I>(&self, children: I) -> Self
+/// #     where
+/// #         I: IntoIterator<Item = Self>,
+/// #     {
+/// #         assert!(children.into_iter().collect::<Vec<Self>>().is_empty());
+/// #         self.clone()
 /// #     }
-/// #     fn variant_arity(_tag: Self::VariantTag) -> usize {
-/// #         0
+/// #     fn nth_child(&self, _: usize) -> &Self {
+/// #         panic!("will not be called")
 /// #     }
 /// #     fn meet(&self, other: &Self) -> Result<Self, Self::Err> {
 /// #         use MyType::*;
@@ -153,10 +146,9 @@ pub enum Constraint<AbsTy: Abstract> {
 /// #     fn unconstrained() -> Self {
 /// #         Self::Top
 /// #     }
-/// #     fn variant(&self) -> Option<Self::VariantTag> {
+/// #     fn arity(&self) -> Option<usize> {
 /// #         match self {
-/// #             Self::String => Some(MyVariant::String),
-/// #             Self::U8 => Some(MyVariant::U8),
+/// #             Self::String | Self::U8 => Some(0),
 /// #             _ => None,
 /// #         }
 /// #     }

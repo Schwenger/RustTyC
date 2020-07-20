@@ -13,12 +13,6 @@ enum AbstractType {
     Numeric,
     Bool,
 }
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum VariantTag {
-    Fixed,
-    Integer,
-    Bool,
-}
 
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq, Hash)]
 enum ConcreteType {
@@ -37,7 +31,6 @@ impl TcVar for Variable {}
 
 impl Abstract for AbstractType {
     type Err = ();
-    type VariantTag = VariantTag;
 
     fn unconstrained() -> Self {
         AbstractType::Any
@@ -58,25 +51,21 @@ impl Abstract for AbstractType {
             (Numeric, Numeric) => Ok(Numeric),
         }
     }
-    fn variant(&self) -> Option<Self::VariantTag> {
+    fn arity(&self) -> Option<usize> {
         match self {
-            AbstractType::Any => None,
-            AbstractType::Fixed(_, _) => Some(VariantTag::Fixed),
-            AbstractType::Integer(_) => Some(VariantTag::Integer),
-            AbstractType::Numeric => None,
-            AbstractType::Bool => Some(VariantTag::Bool),
+            AbstractType::Any | AbstractType::Numeric => None,
+            AbstractType::Bool | AbstractType::Fixed(_, _) | AbstractType::Integer(_) => Some(0),
         }
     }
-    fn variant_arity(_tag: Self::VariantTag) -> usize {
-        0
+    fn nth_child(&self, _n: usize) -> &Self {
+        panic!("cannot access non-extant children")
     }
-    fn from_tag(tag: Self::VariantTag, children: Vec<Self>) -> Self {
-        assert!(children.is_empty());
-        match tag {
-            VariantTag::Fixed => AbstractType::Fixed(0, 0),
-            VariantTag::Integer => AbstractType::Integer(0),
-            VariantTag::Bool => AbstractType::Bool,
-        }
+    fn with_children<I>(&self, children: I) -> Self
+    where
+        I: IntoIterator<Item = Self>,
+    {
+        assert!(children.into_iter().next().is_none());
+        return self.clone();
     }
 }
 

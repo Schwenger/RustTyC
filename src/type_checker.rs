@@ -106,7 +106,6 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             Constraint::Equal(a, b) => self.graph.equate(a, b)?,
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
-            Constraint::Variant(target, variant) => self.graph.register_variant(target, variant)?,
         }
         Ok(())
     }
@@ -136,13 +135,9 @@ pub enum TcErr<AbsTy: Abstract> {
     /// remaining information on the key.  Contains the key and the error that occurred when meeting the explicit
     /// bound with the inferred type.
     TypeBound(TcKey, AbsTy::Err),
-    /// A type can ever only have at most one specific variant.  This error indicates that the constraints
-    /// imply that the type needs to possess two variants at once.
-    /// Contains the key and both variants.  These can be inferred or explicitly assigned variants.
-    DoubleVariantAssignment(TcKey, AbsTy::VariantTag, AbsTy::VariantTag),
     /// This error occurs when a constraint accesses the `n`th child of a type and its variant turns out to only
     /// have `k < n` sub-types.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
-    ChildAccessOutOfBound(TcKey, AbsTy::VariantTag, usize),
+    ChildAccessOutOfBound(TcKey, AbsTy, usize),
 }
