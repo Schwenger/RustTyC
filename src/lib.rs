@@ -1,4 +1,4 @@
-//! This crate provides an interface to perform lattice-based type checking on arbitrary structures structures.
+//! This crate provides an interface to perform lattice-based type checking on arbitrary structures.
 //!
 //! The [`TypeChecker`](struct.TypeChecker.html) struct constitutes the main struct.  It provides functions to create new [`TcKey`](struct.TcKey.html)s.  
 //! These keys represent typed entities such as terms or variables in programming languages.

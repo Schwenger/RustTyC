@@ -16,3 +16,7 @@ Forget everything that was there before.
 ### Remove
 
 * Requirement of implementing a VariantTag type.  Now uses immediate con- and destruction of types.
+
+### Add
+
+* Shortcuts to declare meet operations as symmetric.

@@ -245,6 +245,16 @@ impl TcKey {
     pub fn is_meet_of_all<AbsTy: Abstract>(self, elems: &[Self]) -> Constraint<AbsTy> {
         Constraint::Conjunction(elems.iter().map(|e| self.more_concrete_than(*e)).collect())
     }
+    /// Declares that `self` is the symmetric meet of `left` and `right`.  
+    /// This binds `self` to both `left` and `right` symmetrically.
+    pub fn is_sym_meet_of<AbsTy: Abstract>(self, left: Self, right: Self) -> Constraint<AbsTy> {
+        self.is_sym_meet_of_all(&[left, right])
+    }
+    /// Declares that `self` is the symmetric meet of all elements contained in `elems`.  
+    /// This binds `self` to all of these keys symmetrically.
+    pub fn is_sym_meet_of_all<AbsTy: Abstract>(self, elems: &[Self]) -> Constraint<AbsTy> {
+        Constraint::Conjunction(elems.iter().map(|e| self.equate(*e)).collect())
+    }
     /// Declares that `self` is at least as concrete as the abstracted version of `conc`.
     pub fn captures_concrete<AbsTy: Abstract, CT>(self, conc: CT) -> Constraint<AbsTy>
     where
