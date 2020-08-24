@@ -183,7 +183,7 @@ impl<T: Abstract> ConstraintGraph<T> {
             .enumerate()
             .map(|(ix, ty)| ty.meet(target.ty.nth_child(ix)))
             .collect::<Result<Vec<T>, T::Err>>()
-            .map_err(|e| TcErr::TypeBound(target.key, e))?;
+            .map_err(|e| TcErr::Bound(target.key, None, e))?;
         assert_eq!(arity, children.len());
 
         let new = target.ty.with_children(children.into_iter());
@@ -204,7 +204,7 @@ impl<T: Abstract> ConstraintGraph<T> {
 
     fn add_explicit_bound(&mut self, target: TcKey, bound: T) -> Result<bool, TcErr<T>> {
         let mut vertex = self.repr_mut_from_key(target);
-        let new = vertex.ty.meet(&bound).map_err(|e| TcErr::TypeBound(target, e))?;
+        let new = vertex.ty.meet(&bound).map_err(|e| TcErr::Bound(target, None, e))?;
         if vertex.ty == new {
             return Ok(false);
         }
@@ -243,15 +243,12 @@ impl<T: Abstract> ConstraintGraph<T> {
         }
     }
 
-    /// Returns a vector over all representatives contained in `self`.  This does not resolve forwards, this every representative only occurs once.
-    fn reprs(&self) -> Vec<VertexRef> {
-        self.vertices
-            .iter()
-            .filter_map(|v| match v {
-                Vertex::Fwd { .. } => None,
-                Vertex::Repr(fv) => Some(fv.this),
-            })
-            .collect()
+    /// Returns an Iterator over all full vertices in `self`.  This does not resolve forwards, thus every representative only occurs once.
+    fn reprs(&self) -> impl Iterator<Item = &FullVertex<T>> {
+        self.vertices.iter().filter_map(|v| match v {
+            Vertex::Fwd { .. } => None,
+            Vertex::Repr(fv) => Some(fv),
+        })
     }
 
     fn repr(&self, v: VertexRef) -> &FullVertex<T> {
@@ -304,9 +301,13 @@ impl<T: Abstract> ConstraintGraph<T> {
                 let new = vertex
                     .upper_bounds
                     .iter()
-                    .map(|vr| &self.repr(*vr).ty)
-                    .fold(Ok(vertex.ty.clone()), |a, b| a.and_then(|a| a.meet(&b)))
-                    .map_err(|e| TcErr::TypeBound(vertex.key, e))?;
+                    .map(|vr| {
+                        let v = &self.repr(*vr);
+                        (&v.ty, v.key)
+                    })
+                    .fold(Ok(vertex.ty.clone()), |a, (ty, key)| {
+                        a.and_then(|a| a.meet(ty).map_err(|e| TcErr::Bound(vertex.key, Some(key), e)))
+                    })?;
                 let change = vertex.ty != new;
                 if change {
                     self.repr_mut(vr).ty = new;
@@ -319,8 +320,10 @@ impl<T: Abstract> ConstraintGraph<T> {
     /// Checks and applies all constraints entailed by children and variant relations.
     fn resolve_children(&mut self) -> Result<bool, TcErr<T>> {
         self.reprs()
+            .map(|v| v.this)
+            .collect::<Vec<VertexRef>>()
             .into_iter()
-            .map(|rep| self.resolve_children_for(rep))
+            .map(|vref| self.resolve_children_for(vref))
             .fold(Ok(false), |a, b| a.and_then(|a| b.map(|b| a || b)))
     }
 }

@@ -134,7 +134,7 @@ pub enum TcErr<AbsTy: Abstract> {
     /// An explicit type bound imposed on a key turned out to be incompatible with the type inferred based on
     /// remaining information on the key.  Contains the key and the error that occurred when meeting the explicit
     /// bound with the inferred type.
-    TypeBound(TcKey, AbsTy::Err),
+    Bound(TcKey, Option<TcKey>, AbsTy::Err),
     /// This error occurs when a constraint accesses the `n`th child of a type and its variant turns out to only
     /// have `k < n` sub-types.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
