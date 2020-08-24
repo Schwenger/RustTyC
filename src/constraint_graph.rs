@@ -93,7 +93,8 @@ impl<T: Abstract> ConstraintGraph<T> {
         if parent_v.ty.arity().map(|ar| ar < nth).unwrap_or(false) {
             return Err(TcErr::ChildAccessOutOfBound(parent, parent_v.ty.clone(), nth));
         }
-        Self::fill_with(&mut parent_v.children, None, nth);
+        let required_length = nth + 1;
+        Self::fill_with(&mut parent_v.children, None, required_length);
         let nth_child = parent_v.children[nth];
         if let Some(child) = nth_child {
             return Ok(self.vertices[child].key());
