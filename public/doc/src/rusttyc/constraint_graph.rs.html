@@ -332,6 +332,29 @@
 <span id="332">332</span>
 <span id="333">333</span>
 <span id="334">334</span>
+<span id="335">335</span>
+<span id="336">336</span>
+<span id="337">337</span>
+<span id="338">338</span>
+<span id="339">339</span>
+<span id="340">340</span>
+<span id="341">341</span>
+<span id="342">342</span>
+<span id="343">343</span>
+<span id="344">344</span>
+<span id="345">345</span>
+<span id="346">346</span>
+<span id="347">347</span>
+<span id="348">348</span>
+<span id="349">349</span>
+<span id="350">350</span>
+<span id="351">351</span>
+<span id="352">352</span>
+<span id="353">353</span>
+<span id="354">354</span>
+<span id="355">355</span>
+<span id="356">356</span>
+<span id="357">357</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">types</span>::<span class="ident">Abstract</span>;
 <span class="kw">use</span> <span class="kw">crate</span>::{<span class="ident">TcErr</span>, <span class="ident">TcKey</span>};
@@ -394,12 +417,20 @@
     <span class="ident">this</span>: <span class="ident">VertexRef</span>,
     <span class="ident">key</span>: <span class="ident">TcKey</span>,
     <span class="ident">ty</span>: <span class="ident">T</span>,
+    <span class="ident">exact_bound</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Abstract</span><span class="op">&gt;</span> <span class="ident">Vertex</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="doccomment">/// Creates a full vertex without information regarding its variant or potential children.</span>
+    <span class="doccomment">/// Creates a full vertex without information regarding its children.</span>
     <span class="kw">fn</span> <span class="ident">new_niladic</span>(<span class="ident">key</span>: <span class="ident">TcKey</span>, <span class="ident">this</span>: <span class="ident">VertexRef</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vertex</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-        <span class="ident">Vertex</span>::<span class="ident">Repr</span>(<span class="ident">FullVertex</span> { <span class="ident">children</span>: <span class="ident">Vec</span>::<span class="ident">new</span>(), <span class="ident">upper_bounds</span>: <span class="ident">Vec</span>::<span class="ident">new</span>(), <span class="ident">this</span>, <span class="ident">key</span>, <span class="ident">ty</span>: <span class="ident">T</span>::<span class="ident">unconstrained</span>() })
+        <span class="ident">Vertex</span>::<span class="ident">Repr</span>(<span class="ident">FullVertex</span> {
+            <span class="ident">children</span>: <span class="ident">Vec</span>::<span class="ident">new</span>(),
+            <span class="ident">upper_bounds</span>: <span class="ident">Vec</span>::<span class="ident">new</span>(),
+            <span class="ident">this</span>,
+            <span class="ident">key</span>,
+            <span class="ident">ty</span>: <span class="ident">T</span>::<span class="ident">unconstrained</span>(),
+            <span class="ident">exact_bound</span>: <span class="prelude-val">None</span>,
+        })
     }
 }
 
@@ -416,13 +447,6 @@
         <span class="self">self</span>.<span class="ident">add_vertex</span>(<span class="ident">key</span>, <span class="ident">v</span>);
     }
 
-    <span class="doccomment">/// Registers a variants for a key.  </span>
-    <span class="doccomment">/// This may or may not trigger a check&amp;resolve cycle within the graph.  </span>
-    <span class="doccomment">/// If an Err is returned, a the variant is contradictory to the current state of the graph.  If an Ok is returned, no contradiction was discovered _yet_.</span>
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">register_variant</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target</span>: <span class="ident">TcKey</span>, <span class="ident">variant</span>: <span class="ident">T</span>::<span class="ident">VariantTag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">apply_variant</span>(<span class="ident">target</span>, <span class="ident">variant</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> ())
-    }
-
     <span class="doccomment">/// Registers that a key has at least `n` children.  If this fact was already known and thus a key is already associated with the child,</span>
     <span class="doccomment">/// the key is returned without calling the `keygen` function.  Otherwise, `keygen` generates a new key which will be added to the graph regularly,</span>
     <span class="doccomment">/// associated with the child, and returned.</span>
@@ -433,9 +457,10 @@
     {
         <span class="kw">let</span> <span class="ident">parent_v</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr_mut_from_key</span>(<span class="ident">parent</span>);
         <span class="kw">if</span> <span class="ident">parent_v</span>.<span class="ident">ty</span>.<span class="ident">arity</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">ar</span><span class="op">|</span> <span class="ident">ar</span> <span class="op">&lt;</span> <span class="ident">nth</span>).<span class="ident">unwrap_or</span>(<span class="bool-val">false</span>) {
-            <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">TcErr</span>::<span class="ident">ChildAccessOutOfBound</span>(<span class="ident">parent</span>, <span class="ident">parent_v</span>.<span class="ident">ty</span>.<span class="ident">variant</span>().<span class="ident">unwrap</span>(), <span class="ident">nth</span>));
+            <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">TcErr</span>::<span class="ident">ChildAccessOutOfBound</span>(<span class="ident">parent</span>, <span class="ident">parent_v</span>.<span class="ident">ty</span>.<span class="ident">clone</span>(), <span class="ident">nth</span>));
         }
-        <span class="self">Self</span>::<span class="ident">fill_with</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">parent_v</span>.<span class="ident">children</span>, <span class="prelude-val">None</span>, <span class="ident">nth</span>);
+        <span class="kw">let</span> <span class="ident">required_length</span> <span class="op">=</span> <span class="ident">nth</span> <span class="op">+</span> <span class="number">1</span>;
+        <span class="self">Self</span>::<span class="ident">fill_with</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">parent_v</span>.<span class="ident">children</span>, <span class="prelude-val">None</span>, <span class="ident">required_length</span>);
         <span class="kw">let</span> <span class="ident">nth_child</span> <span class="op">=</span> <span class="ident">parent_v</span>.<span class="ident">children</span>[<span class="ident">nth</span>];
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">child</span>) <span class="op">=</span> <span class="ident">nth_child</span> {
             <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="self">self</span>.<span class="ident">vertices</span>[<span class="ident">child</span>].<span class="ident">key</span>());
@@ -464,6 +489,17 @@
     <span class="doccomment">/// Imposes an explicit bound on a key.  An Err return indicates a contradiction, an Ok does not indicate the absence of a contradiction.</span>
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">explicit_bound</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target</span>: <span class="ident">TcKey</span>, <span class="ident">bound</span>: <span class="ident">T</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">add_explicit_bound</span>(<span class="ident">target</span>, <span class="ident">bound</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> ())
+    }
+
+    <span class="doccomment">/// Imposes an exact bound on a key.  When fully resolved, the types need to match _exactly_.</span>
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">exact_bound</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target</span>: <span class="ident">TcKey</span>, <span class="ident">bound</span>: <span class="ident">T</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>(), <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">target_node</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr_mut_from_key</span>(<span class="ident">target</span>);
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="kw-2">ref</span> <span class="ident">old</span>) <span class="op">=</span> <span class="ident">target_node</span>.<span class="ident">exact_bound</span> {
+            <span class="prelude-val">Err</span>(<span class="ident">TcErr</span>::<span class="ident">ConflictingExactBounds</span>(<span class="ident">target</span>, <span class="ident">old</span>.<span class="ident">clone</span>(), <span class="ident">bound</span>))
+        } <span class="kw">else</span> {
+            <span class="ident">target_node</span>.<span class="ident">exact_bound</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">bound</span>);
+            <span class="prelude-val">Ok</span>(())
+        }
     }
 
     <span class="comment">// INTERNAL HELPER FUNCTIONS</span>
@@ -498,45 +534,50 @@
             .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span><span class="op">&gt;</span>, <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>()<span class="question-mark">?</span>;
 
         <span class="comment">// Commit changes</span>
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">rep_v</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr_mut</span>(<span class="ident">repr</span>);
-        <span class="ident">rep_v</span>.<span class="ident">upper_bounds</span>.<span class="ident">extend</span>(<span class="ident">sub</span>.<span class="ident">upper_bounds</span>.<span class="ident">iter</span>());
-        <span class="ident">rep_v</span>.<span class="ident">children</span> <span class="op">=</span> <span class="ident">new_children</span>;
-        <span class="ident">rep_v</span>.<span class="ident">ty</span> <span class="op">=</span> <span class="ident">new_ty</span>;
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">repr_v</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr_mut</span>(<span class="ident">repr</span>);
+        <span class="kw">match</span> (<span class="kw-2">&amp;</span><span class="ident">repr_v</span>.<span class="ident">exact_bound</span>, <span class="kw-2">&amp;</span><span class="ident">sub</span>.<span class="ident">exact_bound</span>) {
+            (<span class="prelude-val">None</span>, <span class="prelude-val">None</span>) <span class="op">|</span> (<span class="prelude-val">Some</span>(<span class="kw">_</span>), <span class="prelude-val">None</span>) <span class="op">=</span><span class="op">&gt;</span> {}
+            (<span class="prelude-val">None</span>, <span class="prelude-val">Some</span>(<span class="ident">y</span>)) <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="kw">let</span> <span class="kw">_</span> <span class="op">=</span> <span class="ident">repr_v</span>.<span class="ident">exact_bound</span>.<span class="ident">replace</span>(<span class="ident">y</span>.<span class="ident">clone</span>());
+            }
+            (<span class="prelude-val">Some</span>(<span class="ident">x</span>), <span class="prelude-val">Some</span>(<span class="ident">y</span>)) <span class="kw">if</span> <span class="ident">x</span> <span class="op">=</span><span class="op">=</span> <span class="ident">y</span> <span class="op">=</span><span class="op">&gt;</span> {}
+            (<span class="prelude-val">Some</span>(<span class="ident">x</span>), <span class="prelude-val">Some</span>(<span class="ident">y</span>)) <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">TcErr</span>::<span class="ident">ConflictingExactBounds</span>(<span class="ident">repr_v</span>.<span class="ident">key</span>, <span class="ident">x</span>.<span class="ident">clone</span>(), <span class="ident">y</span>.<span class="ident">clone</span>())),
+        };
+        <span class="ident">repr_v</span>.<span class="ident">upper_bounds</span>.<span class="ident">extend</span>(<span class="ident">sub</span>.<span class="ident">upper_bounds</span>.<span class="ident">iter</span>());
+        <span class="ident">repr_v</span>.<span class="ident">children</span> <span class="op">=</span> <span class="ident">new_children</span>;
+        <span class="ident">repr_v</span>.<span class="ident">ty</span> <span class="op">=</span> <span class="ident">new_ty</span>;
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="doccomment">/// Registers that `target` is of the given variant.  Also applies all constraints entailed by this relation.</span>
-    <span class="doccomment">/// The returned boolean value declares whether `self` has changed.</span>
-    <span class="kw">fn</span> <span class="ident">apply_variant</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target</span>: <span class="ident">TcKey</span>, <span class="ident">variant</span>: <span class="ident">T</span>::<span class="ident">VariantTag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">bool</span>, <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
-        <span class="kw">let</span> <span class="ident">v</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr_mut_from_key</span>(<span class="ident">target</span>);
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">old</span>) <span class="op">=</span> <span class="ident">v</span>.<span class="ident">ty</span>.<span class="ident">variant</span>() {
-            <span class="kw">if</span> <span class="ident">old</span> <span class="op">!</span><span class="op">=</span> <span class="ident">variant</span> {
-                <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">TcErr</span>::<span class="ident">DoubleVariantAssignment</span>(<span class="ident">target</span>, <span class="ident">old</span>, <span class="ident">variant</span>));
-            }
-        }
-        <span class="kw">let</span> <span class="ident">target_ref</span> <span class="op">=</span> <span class="ident">v</span>.<span class="ident">this</span>;
-        <span class="self">self</span>.<span class="ident">meet_variant_type</span>(<span class="ident">target_ref</span>, <span class="ident">variant</span>)
-    }
-
     <span class="doccomment">/// See `apply_variant`.</span>
-    <span class="kw">fn</span> <span class="ident">meet_variant_type</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target_ref</span>: <span class="ident">VertexRef</span>, <span class="ident">variant</span>: <span class="ident">T</span>::<span class="ident">VariantTag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">bool</span>, <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">resolve_children_for</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target_ref</span>: <span class="ident">VertexRef</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">bool</span>, <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr_mut</span>(<span class="ident">target_ref</span>);
-        <span class="kw">if</span> <span class="ident">target</span>.<span class="ident">children</span>.<span class="ident">len</span>() <span class="op">&gt;</span> <span class="ident">T</span>::<span class="ident">variant_arity</span>(<span class="ident">variant</span>) {
-            <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">TcErr</span>::<span class="ident">ChildAccessOutOfBound</span>(<span class="ident">target</span>.<span class="ident">key</span>, <span class="ident">variant</span>, <span class="ident">target</span>.<span class="ident">children</span>.<span class="ident">len</span>()));
+        <span class="kw">let</span> <span class="ident">arity</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">target</span>.<span class="ident">ty</span>.<span class="ident">arity</span>() {
+            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="bool-val">false</span>),
+            <span class="prelude-val">Some</span>(<span class="ident">a</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">a</span>,
+        };
+        <span class="kw">if</span> <span class="ident">target</span>.<span class="ident">children</span>.<span class="ident">len</span>() <span class="op">&gt;</span> <span class="ident">arity</span> {
+            <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">TcErr</span>::<span class="ident">ChildAccessOutOfBound</span>(<span class="ident">target</span>.<span class="ident">key</span>, <span class="ident">target</span>.<span class="ident">ty</span>.<span class="ident">clone</span>(), <span class="ident">target</span>.<span class="ident">children</span>.<span class="ident">len</span>()));
         }
-        <span class="self">Self</span>::<span class="ident">fill_with</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">target</span>.<span class="ident">children</span>, <span class="prelude-val">None</span>, <span class="ident">T</span>::<span class="ident">variant_arity</span>(<span class="ident">variant</span>));
+        <span class="self">Self</span>::<span class="ident">fill_with</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">target</span>.<span class="ident">children</span>, <span class="prelude-val">None</span>, <span class="ident">arity</span>);
         <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr</span>(<span class="ident">target_ref</span>); <span class="comment">// get rid of mutable borrow</span>
-        <span class="kw">let</span> <span class="ident">children_types</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">target</span>
-            .<span class="ident">children</span>
-            .<span class="ident">iter</span>()
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">c</span><span class="op">|</span> <span class="ident">c</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">vr</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">repr</span>(<span class="ident">vr</span>).<span class="ident">ty</span>.<span class="ident">clone</span>()).<span class="ident">unwrap_or_else</span>(<span class="ident">T</span>::<span class="ident">unconstrained</span>))
-            .<span class="ident">collect</span>();
-        <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">T</span>::<span class="ident">variant_arity</span>(<span class="ident">variant</span>), <span class="ident">children_types</span>.<span class="ident">len</span>());
-        <span class="kw">let</span> <span class="ident">registered_ty</span> <span class="op">=</span> <span class="ident">T</span>::<span class="ident">from_tag</span>(<span class="ident">variant</span>, <span class="ident">children_types</span>);
-        <span class="kw">let</span> <span class="ident">new_ty</span> <span class="op">=</span> <span class="ident">target</span>.<span class="ident">ty</span>.<span class="ident">meet</span>(<span class="kw-2">&amp;</span><span class="ident">registered_ty</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">TcErr</span>::<span class="ident">TypeBound</span>(<span class="ident">target</span>.<span class="ident">key</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">change</span> <span class="op">=</span> <span class="ident">target</span>.<span class="ident">ty</span> <span class="op">!</span><span class="op">=</span> <span class="ident">new_ty</span>;
-        <span class="self">self</span>.<span class="ident">repr_mut</span>(<span class="ident">target_ref</span>).<span class="ident">ty</span> <span class="op">=</span> <span class="ident">new_ty</span>;
-        <span class="prelude-val">Ok</span>(<span class="ident">change</span>)
+
+        <span class="kw">let</span> <span class="ident">declared</span> <span class="op">=</span>
+            <span class="ident">target</span>.<span class="ident">children</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">c</span><span class="op">|</span> <span class="ident">c</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">vr</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">repr</span>(<span class="ident">vr</span>).<span class="ident">ty</span>.<span class="ident">clone</span>()).<span class="ident">unwrap_or_else</span>(<span class="ident">T</span>::<span class="ident">unconstrained</span>));
+        <span class="kw">let</span> <span class="ident">children</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">declared</span>
+            .<span class="ident">enumerate</span>()
+            .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">ix</span>, <span class="ident">ty</span>)<span class="op">|</span> <span class="ident">ty</span>.<span class="ident">meet</span>(<span class="ident">target</span>.<span class="ident">ty</span>.<span class="ident">nth_child</span>(<span class="ident">ix</span>)))
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>, <span class="ident">T</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span><span class="op">&gt;</span>()
+            .<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">TcErr</span>::<span class="ident">Bound</span>(<span class="ident">target</span>.<span class="ident">key</span>, <span class="prelude-val">None</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
+        <span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">arity</span>, <span class="ident">children</span>.<span class="ident">len</span>());
+
+        <span class="kw">let</span> <span class="ident">new</span> <span class="op">=</span> <span class="ident">target</span>.<span class="ident">ty</span>.<span class="ident">with_children</span>(<span class="ident">children</span>.<span class="ident">into_iter</span>());
+        <span class="kw">if</span> <span class="ident">new</span> <span class="op">!</span><span class="op">=</span> <span class="ident">target</span>.<span class="ident">ty</span> {
+            <span class="self">self</span>.<span class="ident">repr_mut</span>(<span class="ident">target_ref</span>).<span class="ident">ty</span> <span class="op">=</span> <span class="ident">new</span>;
+            <span class="prelude-val">Ok</span>(<span class="bool-val">true</span>)
+        } <span class="kw">else</span> {
+            <span class="prelude-val">Ok</span>(<span class="bool-val">false</span>)
+        }
     }
 
     <span class="kw">fn</span> <span class="ident">add_vertex</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">TcKey</span>, <span class="ident">vertex</span>: <span class="ident">Vertex</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>) {
@@ -548,10 +589,17 @@
 
     <span class="kw">fn</span> <span class="ident">add_explicit_bound</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">target</span>: <span class="ident">TcKey</span>, <span class="ident">bound</span>: <span class="ident">T</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">bool</span>, <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">vertex</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr_mut_from_key</span>(<span class="ident">target</span>);
-        <span class="kw">let</span> <span class="ident">new</span> <span class="op">=</span> <span class="ident">vertex</span>.<span class="ident">ty</span>.<span class="ident">meet</span>(<span class="kw-2">&amp;</span><span class="ident">bound</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">TcErr</span>::<span class="ident">TypeBound</span>(<span class="ident">target</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
-        <span class="kw">let</span> <span class="ident">change</span> <span class="op">=</span> <span class="ident">vertex</span>.<span class="ident">ty</span> <span class="op">!</span><span class="op">=</span> <span class="ident">new</span>;
+        <span class="kw">let</span> <span class="ident">new</span> <span class="op">=</span> <span class="ident">vertex</span>.<span class="ident">ty</span>.<span class="ident">meet</span>(<span class="kw-2">&amp;</span><span class="ident">bound</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">TcErr</span>::<span class="ident">Bound</span>(<span class="ident">target</span>, <span class="prelude-val">None</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
+        <span class="kw">if</span> <span class="ident">vertex</span>.<span class="ident">ty</span> <span class="op">=</span><span class="op">=</span> <span class="ident">new</span> {
+            <span class="kw">return</span> <span class="prelude-val">Ok</span>(<span class="bool-val">false</span>);
+        }
         <span class="ident">vertex</span>.<span class="ident">ty</span> <span class="op">=</span> <span class="ident">new</span>;
-        <span class="prelude-val">Ok</span>(<span class="ident">change</span>)
+        <span class="kw">match</span> <span class="ident">vertex</span>.<span class="ident">ty</span>.<span class="ident">arity</span>() {
+            <span class="prelude-val">Some</span>(<span class="ident">arity</span>) <span class="kw">if</span> <span class="ident">arity</span> <span class="op">&lt;</span> <span class="ident">vertex</span>.<span class="ident">children</span>.<span class="ident">len</span>() <span class="op">=</span><span class="op">&gt;</span> {
+                <span class="prelude-val">Err</span>(<span class="ident">TcErr</span>::<span class="ident">ChildAccessOutOfBound</span>(<span class="ident">target</span>, <span class="ident">vertex</span>.<span class="ident">ty</span>.<span class="ident">clone</span>(), <span class="ident">vertex</span>.<span class="ident">children</span>.<span class="ident">len</span>()))
+            }
+            <span class="kw">_</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="bool-val">true</span>),
+        }
     }
 
     <span class="comment">// ACCESS LOGIC</span>
@@ -580,15 +628,12 @@
         }
     }
 
-    <span class="doccomment">/// Returns a vector over all representatives contained in `self`.  This does not resolve forwards, this every representative only occurs once.</span>
-    <span class="kw">fn</span> <span class="ident">reprs</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">VertexRef</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">vertices</span>
-            .<span class="ident">iter</span>()
-            .<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">v</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">v</span> {
-                <span class="ident">Vertex</span>::<span class="ident">Fwd</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
-                <span class="ident">Vertex</span>::<span class="ident">Repr</span>(<span class="ident">fv</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident">fv</span>.<span class="ident">this</span>),
-            })
-            .<span class="ident">collect</span>()
+    <span class="doccomment">/// Returns an Iterator over all full vertices in `self`.  This does not resolve forwards, thus every representative only occurs once.</span>
+    <span class="kw">fn</span> <span class="ident">reprs</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">FullVertex</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">vertices</span>.<span class="ident">iter</span>().<span class="ident">filter_map</span>(<span class="op">|</span><span class="ident">v</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">v</span> {
+            <span class="ident">Vertex</span>::<span class="ident">Fwd</span> { .. } <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
+            <span class="ident">Vertex</span>::<span class="ident">Repr</span>(<span class="ident">fv</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident">fv</span>),
+        })
     }
 
     <span class="kw">fn</span> <span class="ident">repr</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">v</span>: <span class="ident">VertexRef</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">FullVertex</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
@@ -618,6 +663,7 @@
             <span class="ident">change</span> <span class="op">|</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_asymmetric</span>()<span class="question-mark">?</span>;
             <span class="ident">change</span> <span class="op">|</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">resolve_children</span>()<span class="question-mark">?</span>;
         }
+        <span class="self">self</span>.<span class="ident">reprs</span>().<span class="ident">find</span>(<span class="op">|</span><span class="ident">v</span><span class="op">|</span> <span class="ident">v</span>.<span class="ident">exact_bound</span>.<span class="ident">as_ref</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">bound</span><span class="op">|</span> <span class="ident">bound</span> <span class="op">=</span><span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">v</span>.<span class="ident">ty</span>).<span class="ident">unwrap_or</span>(<span class="bool-val">false</span>));
         <span class="kw">let</span> <span class="ident">res</span> <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">vertices</span>
             .<span class="ident">iter</span>()
@@ -641,9 +687,13 @@
                 <span class="kw">let</span> <span class="ident">new</span> <span class="op">=</span> <span class="ident">vertex</span>
                     .<span class="ident">upper_bounds</span>
                     .<span class="ident">iter</span>()
-                    .<span class="ident">map</span>(<span class="op">|</span><span class="ident">vr</span><span class="op">|</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">repr</span>(<span class="kw-2">*</span><span class="ident">vr</span>).<span class="ident">ty</span>)
-                    .<span class="ident">fold</span>(<span class="prelude-val">Ok</span>(<span class="ident">vertex</span>.<span class="ident">ty</span>.<span class="ident">clone</span>()), <span class="op">|</span><span class="ident">a</span>, <span class="ident">b</span><span class="op">|</span> <span class="ident">a</span>.<span class="ident">and_then</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="ident">a</span>.<span class="ident">meet</span>(<span class="kw-2">&amp;</span><span class="ident">b</span>)))
-                    .<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">TcErr</span>::<span class="ident">TypeBound</span>(<span class="ident">vertex</span>.<span class="ident">key</span>, <span class="ident">e</span>))<span class="question-mark">?</span>;
+                    .<span class="ident">map</span>(<span class="op">|</span><span class="ident">vr</span><span class="op">|</span> {
+                        <span class="kw">let</span> <span class="ident">v</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">repr</span>(<span class="kw-2">*</span><span class="ident">vr</span>);
+                        (<span class="kw-2">&amp;</span><span class="ident">v</span>.<span class="ident">ty</span>, <span class="ident">v</span>.<span class="ident">key</span>)
+                    })
+                    .<span class="ident">fold</span>(<span class="prelude-val">Ok</span>(<span class="ident">vertex</span>.<span class="ident">ty</span>.<span class="ident">clone</span>()), <span class="op">|</span><span class="ident">a</span>, (<span class="ident">ty</span>, <span class="ident">key</span>)<span class="op">|</span> {
+                        <span class="ident">a</span>.<span class="ident">and_then</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="ident">a</span>.<span class="ident">meet</span>(<span class="ident">ty</span>).<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">TcErr</span>::<span class="ident">Bound</span>(<span class="ident">vertex</span>.<span class="ident">key</span>, <span class="prelude-val">Some</span>(<span class="ident">key</span>), <span class="ident">e</span>)))
+                    })<span class="question-mark">?</span>;
                 <span class="kw">let</span> <span class="ident">change</span> <span class="op">=</span> <span class="ident">vertex</span>.<span class="ident">ty</span> <span class="op">!</span><span class="op">=</span> <span class="ident">new</span>;
                 <span class="kw">if</span> <span class="ident">change</span> {
                     <span class="self">self</span>.<span class="ident">repr_mut</span>(<span class="ident">vr</span>).<span class="ident">ty</span> <span class="op">=</span> <span class="ident">new</span>;
@@ -656,16 +706,12 @@
     <span class="doccomment">/// Checks and applies all constraints entailed by children and variant relations.</span>
     <span class="kw">fn</span> <span class="ident">resolve_children</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">bool</span>, <span class="ident">TcErr</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">reprs</span>()
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">v</span><span class="op">|</span> <span class="ident">v</span>.<span class="ident">this</span>)
+            .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">VertexRef</span><span class="op">&gt;</span><span class="op">&gt;</span>()
             .<span class="ident">into_iter</span>()
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">rep</span><span class="op">|</span> {
-                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">variant</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">repr</span>(<span class="ident">rep</span>).<span class="ident">ty</span>.<span class="ident">variant</span>() {
-                    <span class="self">self</span>.<span class="ident">meet_variant_type</span>(<span class="ident">rep</span>, <span class="ident">variant</span>)
-                } <span class="kw">else</span> {
-                    <span class="prelude-val">Ok</span>(<span class="bool-val">false</span>)
-                }
-            })
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">vref</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">resolve_children_for</span>(<span class="ident">vref</span>))
             .<span class="ident">fold</span>(<span class="prelude-val">Ok</span>(<span class="bool-val">false</span>), <span class="op">|</span><span class="ident">a</span>, <span class="ident">b</span><span class="op">|</span> <span class="ident">a</span>.<span class="ident">and_then</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="ident">b</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">b</span><span class="op">|</span> <span class="ident">a</span> <span class="op">|</span><span class="op">|</span> <span class="ident">b</span>)))
     }
 }
 </pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

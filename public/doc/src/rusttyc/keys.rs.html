@@ -261,6 +261,15 @@
 <span id="261">261</span>
 <span id="262">262</span>
 <span id="263">263</span>
+<span id="264">264</span>
+<span id="265">265</span>
+<span id="266">266</span>
+<span id="267">267</span>
+<span id="268">268</span>
+<span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="doccomment">//! The type checker uses [`TcKey`](struct.TcKey.html) to refer to entities like variables or terms.  [`Constraint`](enum.Constraint.html) related different keys and abstract/concrete types.</span>
 <span class="doccomment">//!</span>
@@ -277,7 +286,7 @@
 <span class="attribute">#[<span class="ident">must_use</span> <span class="op">=</span> <span class="string">&quot;the creation of a `TypeConstraint` has no effect, it should be passed to a `TypeChecker`&quot;</span>]</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span> {
-    <span class="doccomment">/// Equates two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.</span>
+    <span class="doccomment">/// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.</span>
     <span class="attribute">#[<span class="ident">doc</span>(<span class="ident">hidden</span>)]</span>
     <span class="ident">Equal</span>(<span class="ident">TcKey</span>, <span class="ident">TcKey</span>),
 
@@ -295,13 +304,12 @@
     <span class="attribute">#[<span class="ident">doc</span>(<span class="ident">hidden</span>)]</span>
     <span class="ident">MoreConcExplicit</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>),
 
+    <span class="doccomment">/// Checks if the type behind the key is exactly AbsTy.</span>
+    <span class="ident">ExactType</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>),
+
     <span class="doccomment">/// A conjunction of several constraints.</span>
     <span class="attribute">#[<span class="ident">doc</span>(<span class="ident">hidden</span>)]</span>
     <span class="ident">Conjunction</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>),
-
-    <span class="doccomment">/// Declares that the key needs to resolve to a type with the given variant.</span>
-    <span class="attribute">#[<span class="ident">doc</span>(<span class="ident">hidden</span>)]</span>
-    <span class="ident">Variant</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>::<span class="ident">VariantTag</span>),
 }
 
 <span class="doccomment">/// An inexpensive and simple indexing mechanism using during the type checking procedure.</span>
@@ -333,16 +341,15 @@
 <span class="doccomment">///</span>
 <span class="doccomment">/// impl Abstract for MyType {</span>
 <span class="doccomment">///     type Err = String;</span>
-<span class="doccomment">///     type VariantTag = MyVariant;</span>
-<span class="doccomment">///     fn from_tag(tag: Self::VariantTag, children: Vec&lt;Self&gt;) -&gt; Self {</span>
-<span class="doccomment">///         assert!(children.is_empty());</span>
-<span class="doccomment">///         match tag {</span>
-<span class="doccomment">///             MyVariant::String =&gt; MyType::String,</span>
-<span class="doccomment">///             MyVariant::U8 =&gt; MyType::U8,</span>
-<span class="doccomment">///         }</span>
+<span class="doccomment">///     fn with_children&lt;I&gt;(&amp;self, children: I) -&gt; Self</span>
+<span class="doccomment">///     where</span>
+<span class="doccomment">///         I: IntoIterator&lt;Item = Self&gt;,</span>
+<span class="doccomment">///     {</span>
+<span class="doccomment">///         assert!(children.into_iter().collect::&lt;Vec&lt;Self&gt;&gt;().is_empty());</span>
+<span class="doccomment">///         self.clone()</span>
 <span class="doccomment">///     }</span>
-<span class="doccomment">///     fn variant_arity(_tag: Self::VariantTag) -&gt; usize {</span>
-<span class="doccomment">///         0</span>
+<span class="doccomment">///     fn nth_child(&amp;self, _: usize) -&gt; &amp;Self {</span>
+<span class="doccomment">///         panic!(&quot;will not be called&quot;)</span>
 <span class="doccomment">///     }</span>
 <span class="doccomment">///     fn meet(&amp;self, other: &amp;Self) -&gt; Result&lt;Self, Self::Err&gt; {</span>
 <span class="doccomment">///         use MyType::*;</span>
@@ -358,10 +365,9 @@
 <span class="doccomment">///     fn unconstrained() -&gt; Self {</span>
 <span class="doccomment">///         Self::Top</span>
 <span class="doccomment">///     }</span>
-<span class="doccomment">///     fn variant(&amp;self) -&gt; Option&lt;Self::VariantTag&gt; {</span>
+<span class="doccomment">///     fn arity(&amp;self) -&gt; Option&lt;usize&gt; {</span>
 <span class="doccomment">///         match self {</span>
-<span class="doccomment">///             Self::String =&gt; Some(MyVariant::String),</span>
-<span class="doccomment">///             Self::U8 =&gt; Some(MyVariant::U8),</span>
+<span class="doccomment">///             Self::String | Self::U8 =&gt; Some(0),</span>
 <span class="doccomment">///             _ =&gt; None,</span>
 <span class="doccomment">///         }</span>
 <span class="doccomment">///     }</span>
@@ -392,16 +398,15 @@
 <span class="doccomment">/// #</span>
 <span class="doccomment">/// # impl Abstract for MyType {</span>
 <span class="doccomment">/// #     type Err = String;</span>
-<span class="doccomment">/// #     type VariantTag = MyVariant;</span>
-<span class="doccomment">/// #     fn from_tag(tag: Self::VariantTag, children: Vec&lt;Self&gt;) -&gt; Self {</span>
-<span class="doccomment">/// #         assert!(children.is_empty());</span>
-<span class="doccomment">/// #         match tag {</span>
-<span class="doccomment">/// #             MyVariant::String =&gt; MyType::String,</span>
-<span class="doccomment">/// #             MyVariant::U8 =&gt; MyType::U8,</span>
-<span class="doccomment">/// #         }</span>
+<span class="doccomment">/// #     fn with_children&lt;I&gt;(&amp;self, children: I) -&gt; Self</span>
+<span class="doccomment">/// #     where</span>
+<span class="doccomment">/// #         I: IntoIterator&lt;Item = Self&gt;,</span>
+<span class="doccomment">/// #     {</span>
+<span class="doccomment">/// #         assert!(children.into_iter().collect::&lt;Vec&lt;Self&gt;&gt;().is_empty());</span>
+<span class="doccomment">/// #         self.clone()</span>
 <span class="doccomment">/// #     }</span>
-<span class="doccomment">/// #     fn variant_arity(_tag: Self::VariantTag) -&gt; usize {</span>
-<span class="doccomment">/// #         0</span>
+<span class="doccomment">/// #     fn nth_child(&amp;self, _: usize) -&gt; &amp;Self {</span>
+<span class="doccomment">/// #         panic!(&quot;will not be called&quot;)</span>
 <span class="doccomment">/// #     }</span>
 <span class="doccomment">/// #     fn meet(&amp;self, other: &amp;Self) -&gt; Result&lt;Self, Self::Err&gt; {</span>
 <span class="doccomment">/// #         use MyType::*;</span>
@@ -417,10 +422,9 @@
 <span class="doccomment">/// #     fn unconstrained() -&gt; Self {</span>
 <span class="doccomment">/// #         Self::Top</span>
 <span class="doccomment">/// #     }</span>
-<span class="doccomment">/// #     fn variant(&amp;self) -&gt; Option&lt;Self::VariantTag&gt; {</span>
+<span class="doccomment">/// #     fn arity(&amp;self) -&gt; Option&lt;usize&gt; {</span>
 <span class="doccomment">/// #         match self {</span>
-<span class="doccomment">/// #             Self::String =&gt; Some(MyVariant::String),</span>
-<span class="doccomment">/// #             Self::U8 =&gt; Some(MyVariant::U8),</span>
+<span class="doccomment">/// #             Self::String | Self::U8 =&gt; Some(0),</span>
 <span class="doccomment">/// #             _ =&gt; None,</span>
 <span class="doccomment">/// #         }</span>
 <span class="doccomment">/// #     }</span>
@@ -436,10 +440,10 @@
 <span class="doccomment">/// let key3 = tc.new_term_key();</span>
 <span class="doccomment">/// let key4 = tc.new_term_key();</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// tc.impose(key1.more_concrete_than_explicit(MyType::Numeric))?;  // key1 is numeric.</span>
+<span class="doccomment">/// tc.impose(key1.concretizes_explicit(MyType::Numeric))?;  // key1 is numeric.</span>
 <span class="doccomment">/// // key2 is at least as concrete as k1, i.e. it will also be numeric.</span>
-<span class="doccomment">/// tc.impose(key2.more_concrete_than(key1))?;</span>
-<span class="doccomment">/// tc.impose(key3.equate(key2))?; // key3 is the same type as key2, i.e., numeric</span>
+<span class="doccomment">/// tc.impose(key2.concretizes(key1))?;</span>
+<span class="doccomment">/// tc.impose(key3.equate_with(key2))?; // key3 is the same type as key2, i.e., numeric</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// let tt = tc.clone().type_check()?;</span>
 <span class="doccomment">/// assert_eq!(tt[key1], MyType::Numeric);</span>
@@ -451,7 +455,7 @@
 <span class="doccomment">/// // Concretize key3 to be a UInt.  Also affects key2 due to unification.  </span>
 <span class="doccomment">/// // key1 is unaffected because of the asymmetric relation between key1 and key2,</span>
 <span class="doccomment">/// // which translates to an asymmetric relation between key1 and key3 as well.</span>
-<span class="doccomment">/// tc.impose(key3.more_concrete_than_explicit(MyType::UInt))?;</span>
+<span class="doccomment">/// tc.impose(key3.concretizes_explicit(MyType::UInt))?;</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// let tt = tc.clone().type_check()?;</span>
 <span class="doccomment">/// assert_eq!(tt[key1], MyType::Numeric);</span>
@@ -462,9 +466,9 @@
 <span class="doccomment">/// // key4 is more concrete than both key2 (and transitively key3), and key1, so it becomes a UInt.</span>
 <span class="doccomment">/// tc.impose(key4.is_meet_of(key2, key1))?;</span>
 <span class="doccomment">/// // Make key2 and key3 U8.  key4 depends on them, so it becomes U8 as well.  key1 is unaffected.</span>
-<span class="doccomment">/// tc.impose(key2.more_concrete_than_explicit(MyType::U8))?;</span>
+<span class="doccomment">/// tc.impose(key2.concretizes_explicit(MyType::U8))?;</span>
 <span class="doccomment">/// let key5 = tc.new_term_key();</span>
-<span class="doccomment">/// tc.impose(key5.more_concrete_than_explicit(MyType::String))?; // key5 is a string.</span>
+<span class="doccomment">/// tc.impose(key5.concretizes_explicit(MyType::String))?; // key5 is a string.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// let tt = tc.clone().type_check()?;</span>
 <span class="doccomment">/// assert_eq!(tt[key1], MyType::Numeric);</span>
@@ -496,15 +500,15 @@
 
 <span class="kw">impl</span> <span class="ident">TcKey</span> {
     <span class="doccomment">/// Connects two keys asymmetrically.  Refining `bound` refines `self` whereas refining `self` leaves `bound` unaffected.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">more_concrete_than</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">bound</span>: <span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">concretizes</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">bound</span>: <span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
         <span class="ident">Constraint</span>::<span class="ident">MoreConc</span> { <span class="ident">target</span>: <span class="self">self</span>, <span class="ident">bound</span> }
     }
-    <span class="doccomment">/// Equates two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">equate</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">other</span>: <span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
+    <span class="doccomment">/// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">equate_with</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">other</span>: <span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
         <span class="ident">Constraint</span>::<span class="ident">Equal</span>(<span class="self">self</span>, <span class="ident">other</span>)
     }
     <span class="doccomment">/// Declares that `self` is at least as concrete as `bound`.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">more_concrete_than_explicit</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">bound</span>: <span class="ident">AbsTy</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">concretizes_explicit</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">bound</span>: <span class="ident">AbsTy</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
         <span class="ident">Constraint</span>::<span class="ident">MoreConcExplicit</span>(<span class="self">self</span>, <span class="ident">bound</span>)
     }
     <span class="doccomment">/// Declares that `self` is the meet of `left` and `right`.  </span>
@@ -515,15 +519,29 @@
     <span class="doccomment">/// Declares that `self` is the meet of all elements contained in `elems`.  </span>
     <span class="doccomment">/// This binds `self` to all of these keys asymmetrically.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_meet_of_all</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">elems</span>: <span class="kw-2">&amp;</span>[<span class="self">Self</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
-        <span class="ident">Constraint</span>::<span class="ident">Conjunction</span>(<span class="ident">elems</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">more_concrete_than</span>(<span class="kw-2">*</span><span class="ident">e</span>)).<span class="ident">collect</span>())
+        <span class="ident">Constraint</span>::<span class="ident">Conjunction</span>(<span class="ident">elems</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">concretizes</span>(<span class="kw-2">*</span><span class="ident">e</span>)).<span class="ident">collect</span>())
+    }
+    <span class="doccomment">/// Declares that `self` is the symmetric meet of `left` and `right`.  </span>
+    <span class="doccomment">/// This binds `self` to both `left` and `right` symmetrically.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_sym_meet_of</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">left</span>: <span class="self">Self</span>, <span class="ident">right</span>: <span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">is_sym_meet_of_all</span>(<span class="kw-2">&amp;</span>[<span class="ident">left</span>, <span class="ident">right</span>])
+    }
+    <span class="doccomment">/// Declares that `self` is the symmetric meet of all elements contained in `elems`.  </span>
+    <span class="doccomment">/// This binds `self` to all of these keys symmetrically.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_sym_meet_of_all</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">elems</span>: <span class="kw-2">&amp;</span>[<span class="self">Self</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
+        <span class="ident">Constraint</span>::<span class="ident">Conjunction</span>(<span class="ident">elems</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">equate_with</span>(<span class="kw-2">*</span><span class="ident">e</span>)).<span class="ident">collect</span>())
+    }
+    <span class="doccomment">/// Ensures that the type behind `self` is exactly `ty`.  As a consequence, this implicitly imposes `ty` as lower bound for `self`.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">has_exactly_type</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">ty</span>: <span class="ident">AbsTy</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span> {
+        <span class="ident">Constraint</span>::<span class="ident">Conjunction</span>(<span class="macro">vec</span><span class="macro">!</span>[<span class="ident">Constraint</span>::<span class="ident">ExactType</span>(<span class="self">self</span>, <span class="ident">ty</span>.<span class="ident">clone</span>()), <span class="self">self</span>.<span class="ident">concretizes_explicit</span>(<span class="ident">ty</span>)])
     }
     <span class="doccomment">/// Declares that `self` is at least as concrete as the abstracted version of `conc`.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">captures_concrete</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span>, <span class="ident">CT</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">conc</span>: <span class="ident">CT</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">concretizes_concrete</span><span class="op">&lt;</span><span class="ident">AbsTy</span>: <span class="ident">Abstract</span>, <span class="ident">CT</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">conc</span>: <span class="ident">CT</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Constraint</span><span class="op">&lt;</span><span class="ident">AbsTy</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="ident">CT</span>: <span class="ident">Generalizable</span><span class="op">&lt;</span><span class="ident">Generalized</span> <span class="op">=</span> <span class="ident">AbsTy</span><span class="op">&gt;</span>,
     {
-        <span class="self">self</span>.<span class="ident">more_concrete_than_explicit</span>(<span class="ident">conc</span>.<span class="ident">generalize</span>())
+        <span class="self">self</span>.<span class="ident">concretizes_explicit</span>(<span class="ident">conc</span>.<span class="ident">generalize</span>())
     }
 }
 </pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

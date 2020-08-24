@@ -227,13 +227,6 @@
 <span id="227">227</span>
 <span id="228">228</span>
 <span id="229">229</span>
-<span id="230">230</span>
-<span id="231">231</span>
-<span id="232">232</span>
-<span id="233">233</span>
-<span id="234">234</span>
-<span id="235">235</span>
-<span id="236">236</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="doccomment">//! This mod contains everything related to types and collections of types (type tables).</span>
 <span class="doccomment">//!</span>
@@ -266,19 +259,18 @@
 <span class="doccomment">/// * Meeting two types returns the greatest upper bound, i.e., the type that is more or equally concrete to either argument _and_ there is no other, less concrete type meeting this requirement.</span>
 <span class="doccomment">/// This especially entails that meeting any type `T` with an unconstrained type returns `T`.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// ## Variants</span>
-<span class="doccomment">/// Type can have variants.  An integer, for example, has the 0-ary variant identifying it as integers.  An optional type on the other hand is 1-ary, i.e., it has one sub-type.</span>
-<span class="doccomment">/// Unconstrained type might not have a variant at all.</span>
+<span class="doccomment">/// ## Arity</span>
+<span class="doccomment">/// Type can be recursive, i.e., they have a number of subtypes, their &quot;children&quot;.</span>
+<span class="doccomment">/// An integer, for example, has no children and is thus 0-ary.  An optional type on the other hand is 1-ary, i.e., it has one sub-type.</span>
+<span class="doccomment">/// During the inference process, the arity might be undetermined:  the unconstrained type will resolve to something with an arity, but the value is not clear, yet.</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// The type checking procedure needs to construct and destruct types based on their variant.</span>
-<span class="doccomment">/// * _Construction_ works over `Abstract::from_tag` taking an array of children, i.e., sub-types, and returning an abstract type.</span>
-<span class="doccomment">/// * _Destruction_ works over `Abstract::variant` to obtain information about the variant itself plus `Abstract::variant_arity` to get its arity.  Access to individual subtypes is not required.</span>
+<span class="doccomment">/// The type checking procedure keeps track of types and their potential children.  </span>
+<span class="doccomment">/// For this, it requires some guarantees when it comes to the arity:</span>
 <span class="doccomment">///</span>
-<span class="doccomment">/// ### Variant Stability</span>
-<span class="doccomment">/// Not every type has a defined variant.  However, it needs to comply with two rules:</span>
-<span class="doccomment">/// * If a type has a variant, it may not change when turning more concrete.  Thus, abstract types with ambiguous variants must not return a variant.</span>
-<span class="doccomment">/// * A leaf type, i.e., a fully resolved non-contradictory type must provide a variant.</span>
-<span class="doccomment">/// A consequence is that the meet of two types with different tag will result in an error if both tags are defined.</span>
+<span class="doccomment">/// ### Arity Stability</span>
+<span class="doccomment">/// * If a type has a defined arity, it may not change when turning more concrete.  Thus, abstract types with ambiguous arity must not return an arity.</span>
+<span class="doccomment">/// * A leaf type, i.e., a fully resolved non-contradictory type must provide an arity.</span>
+<span class="doccomment">/// A consequence is that the meet of two types with different, defined arity will result in an error.</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// # Example</span>
 <span class="doccomment">/// For a full example of an abstract type system, refer to the [crate documentation](../index.html) and the examples. TODO: link!</span>
@@ -287,13 +279,6 @@
     <span class="doccomment">/// Result of a meet of two incompatible type, i.e., it represents a type contradiction.</span>
     <span class="doccomment">/// May contain information regarding why the meet failed.  </span>
     <span class="kw">type</span> <span class="prelude-val">Err</span>: <span class="ident">Debug</span>;
-
-    <span class="doccomment">/// A type that represents different possible variants of the abstract type.</span>
-    <span class="kw">type</span> <span class="ident">VariantTag</span>: <span class="ident">Debug</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Copy</span> <span class="op">+</span> <span class="ident">PartialEq</span> <span class="op">+</span> <span class="ident">Eq</span>;
-
-    <span class="doccomment">/// Returns the type variant of `self`, if it exists.</span>
-    <span class="doccomment">/// Refer to the documentation of [Abstract](trait.Abstract.html) for the responsibilities of this function.</span>
-    <span class="kw">fn</span> <span class="ident">variant</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="self">Self</span>::<span class="ident">VariantTag</span><span class="op">&gt;</span>;
 
     <span class="doccomment">/// Returns the unconstrained, most abstract type.</span>
     <span class="kw">fn</span> <span class="ident">unconstrained</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span>;
@@ -307,20 +292,21 @@
     <span class="doccomment">/// Refer to the documentation of [Abstract](trait.Abstract.html) for the responsibilities of this function.</span>
     <span class="kw">fn</span> <span class="ident">meet</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">other</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span>;
 
-    <span class="doccomment">/// Provides the arity of a variant.  May be 0.</span>
-    <span class="kw">fn</span> <span class="ident">variant_arity</span>(<span class="ident">tag</span>: <span class="self">Self</span>::<span class="ident">VariantTag</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">usize</span>;
+    <span class="doccomment">/// Provides the arity of the `self` if the type is sufficiently resolved to determine it.</span>
+    <span class="kw">fn</span> <span class="ident">arity</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>;
 
-    <span class="doccomment">/// Provides the arity of the variant of `self` if it is defined.</span>
-    <span class="kw">fn</span> <span class="ident">arity</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">variant</span>().<span class="ident">map</span>(<span class="self">Self</span>::<span class="ident">variant_arity</span>)
-    }
+    <span class="doccomment">/// Provide access to the nth child.</span>
+    <span class="doccomment">/// # Guarantee</span>
+    <span class="doccomment">/// The arity of `self` is defined and greater or equal to `n`: `assert!(self.arity.map(|a| *a &gt;= n).unwrap_or(false)`</span>
+    <span class="kw">fn</span> <span class="ident">nth_child</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">n</span>: <span class="ident">usize</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="self">Self</span>;
 
-    <span class="doccomment">/// Creates an abstract type based with the given `tag` and `children`.  </span>
-    <span class="doccomment">/// It is guaranteed that `Self::variant_arity(tag) == children.len()`.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// # Panics</span>
-    <span class="doccomment">/// May panic if `Self::variant_arity(tag) != children.len()`.</span>
-    <span class="kw">fn</span> <span class="ident">from_tag</span>(<span class="ident">tag</span>: <span class="self">Self</span>::<span class="ident">VariantTag</span>, <span class="ident">children</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span>;
+    <span class="doccomment">/// Generate an instance of Self that is equivalent to `self` except that the children of the newly generated type will be</span>
+    <span class="doccomment">/// `children`.</span>
+    <span class="doccomment">/// # Guarantee</span>
+    <span class="doccomment">/// The arity of `self` is defined and corresponds to the number of element in `children`: assert!(self.arity.map(|a| a == children.collect::&lt;Vec&lt;Self&gt;&gt;().len()).unwrap_or(false))`</span>
+    <span class="kw">fn</span> <span class="ident">with_children</span><span class="op">&lt;</span><span class="ident">I</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">children</span>: <span class="ident">I</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span>
+    <span class="kw">where</span>
+        <span class="ident">I</span>: <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="self">Self</span><span class="op">&gt;</span>;
 }
 
 <span class="doccomment">/// Indicates that an abstract type could not be reified because it is too general or too restrictive.</span>
@@ -472,4 +458,4 @@
     }
 }
 </pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

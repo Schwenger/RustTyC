@@ -114,9 +114,8 @@
 <span id="114">114</span>
 <span id="115">115</span>
 <span id="116">116</span>
-<span id="117">117</span>
 </pre><div class="example-wrap"><pre class="rust ">
-<span class="doccomment">//! This crate provides an interface to perform lattice-based type checking on arbitrary structures structures.</span>
+<span class="doccomment">//! This crate provides an interface to perform lattice-based type checking on arbitrary structures.</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! The [`TypeChecker`](struct.TypeChecker.html) struct constitutes the main struct.  It provides functions to create new [`TcKey`](struct.TcKey.html)s.  </span>
 <span class="doccomment">//! These keys represent typed entities such as terms or variables in programming languages.</span>
@@ -156,15 +155,11 @@
 <span class="doccomment">//! # }</span>
 <span class="doccomment">//! # use rusttyc::{TcVar, TypeChecker, types::Abstract, TcErr};</span>
 <span class="doccomment">//! type MyTypeErr = String;</span>
-<span class="doccomment">//! #[derive(PartialEq, Eq, Clone, Copy, Debug)]</span>
-<span class="doccomment">//! enum MyVariant { Integer, Boolean }</span>
 <span class="doccomment">//! impl Abstract for MyType {</span>
 <span class="doccomment">//!     type Err = MyTypeErr;</span>
-<span class="doccomment">//!     type VariantTag = MyVariant;</span>
-<span class="doccomment">//!     fn variant(&amp;self) -&gt; Option&lt;Self::VariantTag&gt; {</span>
+<span class="doccomment">//!     fn arity(&amp;self) -&gt; Option&lt;usize&gt; {</span>
 <span class="doccomment">//!         match self {</span>
-<span class="doccomment">//!             MyType::Integer(_) =&gt; Some(MyVariant::Integer),</span>
-<span class="doccomment">//!             MyType::Boolean =&gt; Some(MyVariant::Boolean),</span>
+<span class="doccomment">//!             MyType::Integer(_) | MyType::Boolean =&gt; Some(0),</span>
 <span class="doccomment">//!             MyType::Unknown =&gt; None,</span>
 <span class="doccomment">//!         }</span>
 <span class="doccomment">//!     }</span>
@@ -177,12 +172,15 @@
 <span class="doccomment">//!             _ =&gt; Err(String::from(&quot;Cannot combine Boolean and Integer&quot;)),</span>
 <span class="doccomment">//!         }</span>
 <span class="doccomment">//!     }</span>
-<span class="doccomment">//!     fn variant_arity(tag: Self::VariantTag) -&gt; usize { 0 }</span>
-<span class="doccomment">//!     fn from_tag(tag: Self::VariantTag, children: Vec&lt;Self&gt;) -&gt; Self {</span>
-<span class="doccomment">//!         match tag {</span>
-<span class="doccomment">//!             MyVariant::Integer =&gt; MyType::Integer(0),</span>
-<span class="doccomment">//!             MyVariant::Boolean =&gt; MyType::Boolean,</span>
-<span class="doccomment">//!         }</span>
+<span class="doccomment">//!     fn with_children&lt;I&gt;(&amp;self, children: I) -&gt; Self</span>
+<span class="doccomment">//!     where</span>
+<span class="doccomment">//!         I: IntoIterator&lt;Item = Self&gt;,</span>
+<span class="doccomment">//!     {</span>
+<span class="doccomment">//!         assert!(children.into_iter().collect::&lt;Vec&lt;Self&gt;&gt;().is_empty());</span>
+<span class="doccomment">//!         self.clone()</span>
+<span class="doccomment">//!     }</span>
+<span class="doccomment">//!     fn nth_child(&amp;self, _: usize) -&gt; &amp;Self {</span>
+<span class="doccomment">//!         panic!(&quot;will not be called&quot;)</span>
 <span class="doccomment">//!     }</span>
 <span class="doccomment">//! }</span>
 <span class="doccomment">//! #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]</span>
@@ -194,10 +192,10 @@
 <span class="doccomment">//! // We type check `x = 0b111 ^ 0b11010`, so x needs 5 bits.</span>
 <span class="doccomment">//! let t1 = tc.new_term_key();</span>
 <span class="doccomment">//! // The term is an int with at least a width of 3 bits.</span>
-<span class="doccomment">//! tc.impose(t1.more_concrete_than_explicit(MyType::Integer(3)))?;</span>
+<span class="doccomment">//! tc.impose(t1.concretizes_explicit(MyType::Integer(3)))?;</span>
 <span class="doccomment">//! let t2 = tc.new_term_key();</span>
 <span class="doccomment">//! // The term is an int with at least a width of 5 bits.</span>
-<span class="doccomment">//! tc.impose(t2.more_concrete_than_explicit(MyType::Integer(5)))?;</span>
+<span class="doccomment">//! tc.impose(t2.concretizes_explicit(MyType::Integer(5)))?;</span>
 <span class="doccomment">//! let tx = tc.new_term_key(); // t3 is the combination of t1 and t2, e.g. addition.</span>
 <span class="doccomment">//! tc.impose(tx.is_meet_of(t1, t2))?; // Addition is the meet of both types.</span>
 <span class="doccomment">//! let type_table = tc.type_check()?;</span>
@@ -234,4 +232,4 @@
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">keys</span>::<span class="ident">TcKey</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">type_checker</span>::{<span class="ident">TcErr</span>, <span class="ident">TcVar</span>, <span class="ident">TypeChecker</span>};
 </pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

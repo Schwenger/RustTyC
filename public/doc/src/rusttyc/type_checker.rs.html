@@ -146,6 +146,8 @@
 <span id="146">146</span>
 <span id="147">147</span>
 <span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">constraint_graph</span>::<span class="ident">ConstraintGraph</span>;
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">keys</span>::{<span class="ident">Constraint</span>, <span class="ident">TcKey</span>};
@@ -255,7 +257,7 @@
             <span class="ident">Constraint</span>::<span class="ident">Equal</span>(<span class="ident">a</span>, <span class="ident">b</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">graph</span>.<span class="ident">equate</span>(<span class="ident">a</span>, <span class="ident">b</span>)<span class="question-mark">?</span>,
             <span class="ident">Constraint</span>::<span class="ident">MoreConc</span> { <span class="ident">target</span>, <span class="ident">bound</span> } <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">graph</span>.<span class="ident">add_upper_bound</span>(<span class="ident">target</span>, <span class="ident">bound</span>),
             <span class="ident">Constraint</span>::<span class="ident">MoreConcExplicit</span>(<span class="ident">target</span>, <span class="ident">bound</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">graph</span>.<span class="ident">explicit_bound</span>(<span class="ident">target</span>, <span class="ident">bound</span>)<span class="question-mark">?</span>,
-            <span class="ident">Constraint</span>::<span class="ident">Variant</span>(<span class="ident">target</span>, <span class="ident">variant</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">graph</span>.<span class="ident">register_variant</span>(<span class="ident">target</span>, <span class="ident">variant</span>)<span class="question-mark">?</span>,
+            <span class="ident">Constraint</span>::<span class="ident">ExactType</span>(<span class="ident">target</span>, <span class="ident">bound</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="self">self</span>.<span class="ident">graph</span>.<span class="ident">exact_bound</span>(<span class="ident">target</span>, <span class="ident">bound</span>)<span class="question-mark">?</span>,
         }
         <span class="prelude-val">Ok</span>(())
     }
@@ -284,16 +286,18 @@
     <span class="doccomment">/// An explicit type bound imposed on a key turned out to be incompatible with the type inferred based on</span>
     <span class="doccomment">/// remaining information on the key.  Contains the key and the error that occurred when meeting the explicit</span>
     <span class="doccomment">/// bound with the inferred type.</span>
-    <span class="ident">TypeBound</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>::<span class="prelude-val">Err</span>),
-    <span class="doccomment">/// A type can ever only have at most one specific variant.  This error indicates that the constraints</span>
-    <span class="doccomment">/// imply that the type needs to possess two variants at once.</span>
-    <span class="doccomment">/// Contains the key and both variants.  These can be inferred or explicitly assigned variants.</span>
-    <span class="ident">DoubleVariantAssignment</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>::<span class="ident">VariantTag</span>, <span class="ident">AbsTy</span>::<span class="ident">VariantTag</span>),
+    <span class="ident">Bound</span>(<span class="ident">TcKey</span>, <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">TcKey</span><span class="op">&gt;</span>, <span class="ident">AbsTy</span>::<span class="prelude-val">Err</span>),
     <span class="doccomment">/// This error occurs when a constraint accesses the `n`th child of a type and its variant turns out to only</span>
     <span class="doccomment">/// have `k &lt; n` sub-types.</span>
     <span class="doccomment">/// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that</span>
     <span class="doccomment">/// was attempted to be accessed.</span>
-    <span class="ident">ChildAccessOutOfBound</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>::<span class="ident">VariantTag</span>, <span class="ident">usize</span>),
+    <span class="ident">ChildAccessOutOfBound</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>, <span class="ident">usize</span>),
+    <span class="doccomment">/// Indicates a violation of an exact type requirement for a key.  The partially or fully resolved type might</span>
+    <span class="doccomment">/// be less concrete, more concrete, or incomparable.</span>
+    <span class="ident">ExactTypeViolation</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>),
+    <span class="doccomment">/// Indicates that a key has two conflicting, i.e. non-equal, exact bounds.  This can occur when imposing</span>
+    <span class="doccomment">/// two exact bounds on the very same key or when two keys with conflicting types get equated.</span>
+    <span class="ident">ConflictingExactBounds</span>(<span class="ident">TcKey</span>, <span class="ident">AbsTy</span>, <span class="ident">AbsTy</span>),
 }
 </pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>
