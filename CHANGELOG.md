@@ -24,3 +24,19 @@ Forget everything that was there before.
 ### Rename
 
 * Improved some name when generating constraints with keys.
+
+## [0.3.2] - 24.08.2020
+
+### Fix
+
+* Index out of bound error resulting from incorrect determination of length in types with non-zero.
+
+### Add
+
+* Readme
+* Constraint declaring an exact type bound for a key.
+* Two `TcErr`s for handling exact type bound errors.
+
+### Rename
+
+* Rename TypeBound -> Bound because what else would it be?
