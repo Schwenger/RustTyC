@@ -31,6 +31,9 @@ pub enum Constraint<AbsTy: Abstract> {
     #[doc(hidden)]
     MoreConcExplicit(TcKey, AbsTy),
 
+    /// Checks if the type behind the key is exactly AbsTy.
+    ExactType(TcKey, AbsTy),
+
     /// A conjunction of several constraints.
     #[doc(hidden)]
     Conjunction(Vec<Self>),
@@ -254,6 +257,10 @@ impl TcKey {
     /// This binds `self` to all of these keys symmetrically.
     pub fn is_sym_meet_of_all<AbsTy: Abstract>(self, elems: &[Self]) -> Constraint<AbsTy> {
         Constraint::Conjunction(elems.iter().map(|e| self.equate_with(*e)).collect())
+    }
+    /// Ensures that the type behind `self` is exactly `ty`.  As a consequence, this implicitly imposes `ty` as lower bound for `self`.
+    pub fn has_exactly_type<AbsTy: Abstract>(self, ty: AbsTy) -> Constraint<AbsTy> {
+        Constraint::Conjunction(vec![Constraint::ExactType(self, ty.clone()), self.concretizes_explicit(ty)])
     }
     /// Declares that `self` is at least as concrete as the abstracted version of `conc`.
     pub fn concretizes_concrete<AbsTy: Abstract, CT>(self, conc: CT) -> Constraint<AbsTy>

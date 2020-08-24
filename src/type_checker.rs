@@ -106,6 +106,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             Constraint::Equal(a, b) => self.graph.equate(a, b)?,
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
+            Constraint::ExactType(target, bound) => self.graph.exact_bound(target, bound)?,
         }
         Ok(())
     }
@@ -140,4 +141,10 @@ pub enum TcErr<AbsTy: Abstract> {
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
     ChildAccessOutOfBound(TcKey, AbsTy, usize),
+    /// Indicates a violation of an exact type requirement for a key.  The partially or fully resolved type might
+    /// be less concrete, more concrete, or incomparable.
+    ExactTypeViolation(TcKey, AbsTy),
+    /// Indicates that a key has two conflicting, i.e. non-equal, exact bounds.  This can occur when imposing
+    /// two exact bounds on the very same key or when two keys with conflicting types get equated.
+    ConflictingExactBounds(TcKey, AbsTy, AbsTy),
 }

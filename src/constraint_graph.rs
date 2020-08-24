@@ -59,12 +59,20 @@ struct FullVertex<T: Abstract> {
     this: VertexRef,
     key: TcKey,
     ty: T,
+    exact_bound: Option<T>,
 }
 
 impl<T: Abstract> Vertex<T> {
     /// Creates a full vertex without information regarding its children.
     fn new_niladic(key: TcKey, this: VertexRef) -> Vertex<T> {
-        Vertex::Repr(FullVertex { children: Vec::new(), upper_bounds: Vec::new(), this, key, ty: T::unconstrained() })
+        Vertex::Repr(FullVertex {
+            children: Vec::new(),
+            upper_bounds: Vec::new(),
+            this,
+            key,
+            ty: T::unconstrained(),
+            exact_bound: None,
+        })
     }
 }
 
@@ -125,6 +133,17 @@ impl<T: Abstract> ConstraintGraph<T> {
         self.add_explicit_bound(target, bound).map(|_| ())
     }
 
+    /// Imposes an exact bound on a key.  When fully resolved, the types need to match _exactly_.
+    pub(crate) fn exact_bound(&mut self, target: TcKey, bound: T) -> Result<(), TcErr<T>> {
+        let target_node = self.repr_mut_from_key(target);
+        if let Some(ref old) = target_node.exact_bound {
+            Err(TcErr::ConflictingExactBounds(target, old.clone(), bound))
+        } else {
+            target_node.exact_bound = Some(bound);
+            Ok(())
+        }
+    }
+
     // INTERNAL HELPER FUNCTIONS
 
     /// Transforms `sub` into a forward to `repr`.
@@ -157,10 +176,18 @@ impl<T: Abstract> ConstraintGraph<T> {
             .collect::<Result<Vec<Option<usize>>, TcErr<T>>>()?;
 
         // Commit changes
-        let mut rep_v = self.repr_mut(repr);
-        rep_v.upper_bounds.extend(sub.upper_bounds.iter());
-        rep_v.children = new_children;
-        rep_v.ty = new_ty;
+        let mut repr_v = self.repr_mut(repr);
+        match (&repr_v.exact_bound, &sub.exact_bound) {
+            (None, None) | (Some(_), None) => {}
+            (None, Some(y)) => {
+                let _ = repr_v.exact_bound.replace(y.clone());
+            }
+            (Some(x), Some(y)) if x == y => {}
+            (Some(x), Some(y)) => return Err(TcErr::ConflictingExactBounds(repr_v.key, x.clone(), y.clone())),
+        };
+        repr_v.upper_bounds.extend(sub.upper_bounds.iter());
+        repr_v.children = new_children;
+        repr_v.ty = new_ty;
         Ok(())
     }
 
@@ -278,6 +305,7 @@ impl<T: Abstract> ConstraintGraph<T> {
             change |= self.resolve_asymmetric()?;
             change |= self.resolve_children()?;
         }
+        self.reprs().find(|v| v.exact_bound.as_ref().map(|bound| bound == &v.ty).unwrap_or(false));
         let res = self
             .vertices
             .iter()
