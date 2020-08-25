@@ -291,7 +291,8 @@ impl<T: Abstract> ConstraintGraph<T> {
 
     /// Adds `entry` to `v` until it has length `size`.
     fn fill_with<X: Clone>(v: &mut Vec<X>, entry: X, size: usize) {
-        v.extend(vec![entry; v.len() - size]);
+        let diff = size.saturating_sub(v.len());
+        v.extend(vec![entry; diff]);
     }
 }
 

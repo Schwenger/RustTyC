@@ -40,3 +40,9 @@ Forget everything that was there before.
 ### Rename
 
 * Rename TypeBound -> Bound because what else would it be?
+
+## [0.3.3] - unpublished
+
+### Fix
+
+* Bug when filling vector with default elements.
