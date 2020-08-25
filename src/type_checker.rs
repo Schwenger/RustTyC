@@ -90,7 +90,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<AbsTy>> {
         let next_key = self.next_key(); // Cannot mutate the state!
         let child = self.graph.nth_child(parent, nth, || next_key)?;
-        if child != next_key {
+        if child == next_key {
             self.keys.push(child);
         }
         Ok(child)

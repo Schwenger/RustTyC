@@ -46,3 +46,5 @@ Forget everything that was there before.
 ### Fix
 
 * Bug when filling vector with default elements.
+* Handle child keys correctly.
+* Add assertions that a key cannot be equated with itself.

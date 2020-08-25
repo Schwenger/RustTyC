@@ -232,6 +232,7 @@ impl TcKey {
     }
     /// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
     pub fn equate_with<AbsTy: Abstract>(self, other: Self) -> Constraint<AbsTy> {
+        assert_ne!(self, other, "Cannot equate equal keys.");
         Constraint::Equal(self, other)
     }
     /// Declares that `self` is at least as concrete as `bound`.

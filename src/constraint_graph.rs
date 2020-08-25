@@ -148,6 +148,7 @@ impl<T: Abstract> ConstraintGraph<T> {
 
     /// Transforms `sub` into a forward to `repr`.
     fn establish_fwd(&mut self, sub: VertexRef, repr: VertexRef) -> Result<(), TcErr<T>> {
+        assert_ne!(sub, repr, "cannot establish forward to itself.");
         let FullVertex { this, key, ref ty, .. } = *self.repr(sub);
         let repr_v = self.repr(repr);
         let new_ty = repr_v.ty.meet(ty).map_err(|e| TcErr::KeyEquation(key, repr_v.key, e))?;
