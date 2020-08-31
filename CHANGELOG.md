@@ -48,3 +48,4 @@ Forget everything that was there before.
 * Bug when filling vector with default elements.
 * Handle child keys correctly.
 * Add assertions that a key cannot be equated with itself.
+* Report error when exact type bound is violated.
