@@ -49,3 +49,4 @@ Forget everything that was there before.
 * Handle child keys correctly.
 * Add assertions that a key cannot be equated with itself.
 * Report error when exact type bound is violated.
+* Cycles in Constraint Graph lead to a unified eq class.
