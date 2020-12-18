@@ -137,7 +137,11 @@ impl<T: Abstract> ConstraintGraph<T> {
     pub(crate) fn exact_bound(&mut self, target: TcKey, bound: T) -> Result<(), TcErr<T>> {
         let target_node = self.repr_mut_from_key(target);
         if let Some(ref old) = target_node.exact_bound {
+            if old != &bound {
             Err(TcErr::ConflictingExactBounds(target, old.clone(), bound))
+            } else {
+                Ok(())
+            }
         } else {
             target_node.exact_bound = Some(bound);
             Ok(())

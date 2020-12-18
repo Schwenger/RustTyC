@@ -50,3 +50,4 @@ Forget everything that was there before.
 * Add assertions that a key cannot be equated with itself.
 * Report error when exact type bound is violated.
 * Cycles in Constraint Graph lead to a unified eq class.
+* Fix: Check for equality of bounds before reporting a conflict in exact bounds.
