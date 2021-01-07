@@ -29,6 +29,7 @@ enum ConcreteType {
     Bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
 enum Variant {
     Fixed,
