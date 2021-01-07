@@ -102,7 +102,7 @@
     unstable_features,
     unused_import_braces,
     unused_qualifications,
-    intra_doc_link_resolution_failure
+    broken_intra_doc_links,
 )]
 
 pub(crate) mod constraint_graph;
