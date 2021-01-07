@@ -315,7 +315,7 @@ impl<T: Abstract> ConstraintGraph<T> {
             change |= self.resolve_asymmetric()?;
             change |= self.resolve_children()?;
         }
-        if let Some(v) = self.reprs().find(|v| v.exact_bound.as_ref().map(|bound| dbg!(dbg!(bound) != dbg!(&v.ty))).unwrap_or(false)) {
+        if let Some(v) = self.reprs().find(|v| v.exact_bound.as_ref().map(|bound| bound != &v.ty).unwrap_or(false)) {
             return Err(TcErr::ExactTypeViolation(v.key, v.ty.clone()));
         }
         let res = self
