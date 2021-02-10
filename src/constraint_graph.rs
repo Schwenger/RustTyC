@@ -133,6 +133,14 @@ impl<T: Abstract> ConstraintGraph<T> {
                 Ok(())
             }
         } else {
+            if let Some(arity) = bound.arity() {
+                for i in 0..arity {
+                    let child_key = self.nth_child(target, i)?;
+                    let child_type = bound.nth_child(i);
+                    self.exact_bound(child_key, child_type.clone())?;
+                }
+            }
+            let target_node = self.repr_mut(target); // drop target_node bc of double mut borrow.
             target_node.exact_bound = Some(bound);
             Ok(())
         }

@@ -91,9 +91,13 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             Constraint::Equal(a, b) => self.graph.equate(a, b)?,
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
-            Constraint::ExactType(target, bound) => self.graph.exact_bound(target, bound)?,
+            Constraint::ExactType(target, bound) => self.impose_exact_bound(target, bound)?,
         }
         Ok(())
+    }
+
+    fn impose_exact_bound(&mut self, target: TcKey, bound: AbsTy) -> Result<(), TcErr<AbsTy>> {
+        self.graph.exact_bound(target, bound)
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
