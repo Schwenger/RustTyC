@@ -51,3 +51,4 @@ Forget everything that was there before.
 * Report error when exact type bound is violated.
 * Cycles in Constraint Graph lead to a unified eq class.
 * Fix: Check for equality of bounds before reporting a conflict in exact bounds.
+* No longer discard reification errors.

@@ -218,12 +218,11 @@ where
 {
     /// Attempts to transform an [`AbstractTypeTable`](struct.AbstractTypeTable.html) into a [`ReifiedTypeTable`](struct.ReifiedTypeTable.html)
     /// by reifying all abstract types.
-    pub fn try_reified(self) -> Result<ReifiedTypeTable<AbsTy::Reified>, ()> {
+    pub fn try_reified(self) -> Result<ReifiedTypeTable<AbsTy::Reified>, ReificationErr> {
         self.table
             .into_iter()
             .map(|(key, ty)| ty.try_reify().map(|re| (key, re)))
             .collect::<Result<HashMap<TcKey, AbsTy::Reified>, ReificationErr>>()
-            .map_err(|_| ())
             .map(|table| ReifiedTypeTable { table })
     }
 }
