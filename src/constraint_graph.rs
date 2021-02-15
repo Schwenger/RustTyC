@@ -239,6 +239,7 @@ impl<T: Abstract> ConstraintGraph<T> {
         if vertex.ty == new {
             return Ok(false);
         }
+        println!("Bound: {:?}, old type: {:?}, new type: {:?}", &bound, &vertex.ty, &new);
         vertex.ty = new;
         match vertex.ty.arity() {
             Some(arity) if arity < vertex.children.len() => {
