@@ -298,7 +298,7 @@ impl<T: Abstract> ConstraintGraph<T> {
             change |= self.resolve_children()?;
         }
         if let Some(v) = self.reprs().find(|v| v.exact_bound.as_ref().map(|bound| bound != &v.ty).unwrap_or(false)) {
-            return Err(TcErr::ExactTypeViolation(v.this, v.ty.clone()));
+            return Err(TcErr::ExactTypeViolation(v.this, v.ty.clone(), v.exact_bound.clone()));
         }
         let res = self
             .vertices

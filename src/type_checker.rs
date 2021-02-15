@@ -132,7 +132,7 @@ pub enum TcErr<AbsTy: Abstract> {
     ChildAccessOutOfBound(TcKey, AbsTy, usize),
     /// Indicates a violation of an exact type requirement for a key.  The partially or fully resolved type might
     /// be less concrete, more concrete, or incomparable.
-    ExactTypeViolation(TcKey, AbsTy),
+    ExactTypeViolation(TcKey, AbsTy, Option<AbsTy>),
     /// Indicates that a key has two conflicting, i.e. non-equal, exact bounds.  This can occur when imposing
     /// two exact bounds on the very same key or when two keys with conflicting types get equated.
     ConflictingExactBounds(TcKey, AbsTy, AbsTy),
