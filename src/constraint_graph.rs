@@ -234,13 +234,19 @@ impl<T: Abstract> ConstraintGraph<T> {
     }
 
     fn add_explicit_bound(&mut self, target: TcKey, bound: T) -> Result<bool, TcErr<T>> {
-        let mut vertex = self.repr_mut(target);
+        let vertex = self.repr(target);
         let new = vertex.ty.meet(&bound).map_err(|e| TcErr::Bound(target, None, e))?;
         if vertex.ty == new {
             return Ok(false);
         }
-        println!("Bound: {:?}, old type: {:?}, new type: {:?}", &bound, &vertex.ty, &new);
-        vertex.ty = new;
+        if let Some(arity) = new.arity() {
+            for i in 0..arity {
+                let child_key = self.nth_child(target, i)?;
+                let child_type = bound.nth_child(i);
+                self.add_explicit_bound(child_key, child_type.clone())?;
+            }
+        }
+        let vertex = self.repr(target); // Needed to release borrow before.
         match vertex.ty.arity() {
             Some(arity) if arity < vertex.children.len() => {
                 Err(TcErr::ChildAccessOutOfBound(target, vertex.ty.clone(), vertex.children.len()))

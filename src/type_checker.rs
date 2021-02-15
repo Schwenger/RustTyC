@@ -90,10 +90,16 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
             Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
             Constraint::Equal(a, b) => self.graph.equate(a, b)?,
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
-            Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
+            Constraint::MoreConcExplicit(target, bound) => self.impose_explicit_bound(target, bound)?,
             Constraint::ExactType(target, bound) => self.impose_exact_bound(target, bound)?,
         }
         Ok(())
+    }
+
+    // MAJOR TODOS: KEYGEN IN GRAPH, BETTER SYNC OF CHILD-KEYS AND TYPE BOUNDS
+
+    fn impose_explicit_bound(&mut self, target: TcKey, bound: AbsTy) -> Result<(), TcErr<AbsTy>> {
+        self.graph.explicit_bound(target, bound)
     }
 
     fn impose_exact_bound(&mut self, target: TcKey, bound: AbsTy) -> Result<(), TcErr<AbsTy>> {
