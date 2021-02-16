@@ -41,7 +41,6 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
     variables: HashMap<Var, TcKey>,
     graph: ConstraintGraph<AbsTy>,
-    keys: Vec<TcKey>,
 }
 
 impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
@@ -54,19 +53,12 @@ impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
 impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// Creates a new, empty `TypeChecker`.  
     pub fn new() -> Self {
-        TypeChecker { keys: Vec::new(), variables: HashMap::new(), graph: ConstraintGraph::new() }
-    }
-
-    fn next_key(&self) -> TcKey {
-        TcKey::new(self.keys.len())
+        TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new() }
     }
 
     /// Generates a new key representing a term.  
     pub fn new_term_key(&mut self) -> TcKey {
-        let key = self.next_key();
-        self.graph.add(key);
-        self.keys.push(key); // TODO: probably unnecessary.
-        key
+        self.graph.new_vertex()
     }
 
     /// Manages keys for variables.  It checks if `var` already has an associated key.
@@ -88,21 +80,14 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
     pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<AbsTy>> {
-        let next_key = self.next_key(); // Cannot mutate the state!
-        let child = self.graph.nth_child(parent, nth, || next_key)?;
-        if child == next_key {
-            self.keys.push(child);
-        }
-        Ok(child)
+        self.graph.nth_child(parent, nth)
     }
 
     /// Imposes a constraint on keys.  They can be obtained by using the associated functions of [`TcKey`](struct.TcKey.html).
     /// Returns a [`TcErr`](enum.TcErr.html) if the constraint immediately reveals a contradiction.
     pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), TcErr<AbsTy>> {
         match constr {
-            Constraint::Conjunction(cs) => {
-                cs.into_iter().map(|c| self.impose(c)).collect::<Result<(), TcErr<AbsTy>>>()?
-            }
+            Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
             Constraint::Equal(a, b) => self.graph.equate(a, b)?,
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
@@ -112,8 +97,8 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
-    pub fn all_keys(&self) -> impl Iterator<Item = &TcKey> {
-        self.keys.iter()
+    pub fn all_keys(&self) -> impl Iterator<Item = TcKey> + '_ {
+        self.graph.all_keys()
     }
 
     /// Finalizes the type check procedure.

@@ -214,7 +214,7 @@ pub enum Constraint<AbsTy: Abstract> {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TcKey {
     pub(crate) ix: usize,
 }
