@@ -1,6 +1,6 @@
 use crate::constraint_graph::ConstraintGraph;
 use crate::keys::{Constraint, TcKey};
-use crate::types::{Abstract, AbstractTypeTable};
+use crate::types::Variant;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -21,14 +21,14 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 /// A variable has exactly one associated key, even if it occurs several times in the external data structure.
 /// The type checker manages keys for variables.
 /// * `Constraint`s represent dependencies between keys and types.  They can only be created using [`TcKey`](struct.TcKey.html).
-/// * [`Abstract`](trait.Abstract.html) is an external data type that constitutes a potentially unresolved type.
-/// * [`TcErr`](enum.TcErr.html) is a wrapper for `Abstract::Err` that contains additional information on what went wrong.
-/// * [`AbstractTypeTable`](struct.AbstractTypeTable.html) maps keys to abstract types.
+/// * [`Variant`](trait.Variant.html) is an external data type that constitutes a potentially unresolved type.
+/// * [`TcErr`](enum.TcErr.html) is a wrapper for `Variant::Err` that contains additional information on what went wrong.
+/// * [`VariantTypeTable`](struct.VariantTypeTable.html) maps keys to Variant types.
 ///
 /// # Process
 /// In the first step after creation, the `TypeChecker` generates keys and collects information.  It may already resolve some constraints
 /// and reveal contradictions.  This prompts it to return a negative result with a [`TcErr`](enum.TcErr.html).
-/// When all information is collected, it resolves them and generates a type table that contains the least restrictive abstract type for
+/// When all information is collected, it resolves them and generates a type table that contains the least restrictive Variant type for
 /// each registered key.
 ///
 /// ## Note:
@@ -38,19 +38,19 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 /// # Example
 /// See [`crate documentation`](index.html).
 #[derive(Debug, Clone)]
-pub struct TypeChecker<AbsTy: Abstract, Var: TcVar> {
+pub struct TypeChecker<V: Variant, Var: TcVar> {
     variables: HashMap<Var, TcKey>,
-    graph: ConstraintGraph<AbsTy>,
+    graph: ConstraintGraph<V>,
 }
 
-impl<AbsTy: Abstract, Var: TcVar> Default for TypeChecker<AbsTy, Var> {
+impl<V: Variant, Var: TcVar> Default for TypeChecker<V, Var> {
     fn default() -> Self {
         TypeChecker::new()
     }
 }
 
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
-impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
+impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     /// Creates a new, empty `TypeChecker`.  
     pub fn new() -> Self {
         TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new() }
@@ -58,7 +58,7 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
 
     /// Generates a new key representing a term.  
     pub fn new_term_key(&mut self) -> TcKey {
-        self.graph.new_vertex()
+        self.graph.create_vertex()
     }
 
     /// Manages keys for variables.  It checks if `var` already has an associated key.
@@ -79,21 +79,29 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// If this imposition immediately leads to a contradiction, an [`TcErr`](enum.TcErr.html) is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
-    pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<AbsTy>> {
+    pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<V>> {
         self.graph.nth_child(parent, nth)
     }
 
     /// Imposes a constraint on keys.  They can be obtained by using the associated functions of [`TcKey`](struct.TcKey.html).
     /// Returns a [`TcErr`](enum.TcErr.html) if the constraint immediately reveals a contradiction.
-    pub fn impose(&mut self, constr: Constraint<AbsTy>) -> Result<(), TcErr<AbsTy>> {
+    pub fn impose(&mut self, constr: Constraint<V>) -> Result<(), TcErr<V>> {
         match constr {
             Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
             Constraint::Equal(a, b) => self.graph.equate(a, b)?,
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
-            Constraint::ExactType(target, bound) => self.graph.exact_bound(target, bound)?,
         }
         Ok(())
+    }
+
+    /// Lifts a collection of keys as children into a certain recursive variant.
+    pub fn lift_into(&mut self, variant: V, mut sub_types: Vec<TcKey>) -> TcKey {
+        self.lift_partially(variant, sub_types.drain(..).map(Some).collect())
+    }
+    /// Lifts a collection of keys as subset of children into a certain recursive variant.
+    pub fn lift_partially(&mut self, variant: V, sub_types: Vec<Option<TcKey>>) -> TcKey {
+        self.graph.lift(variant, sub_types)
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
@@ -104,32 +112,38 @@ impl<AbsTy: Abstract, Var: TcVar> TypeChecker<AbsTy, Var> {
     /// Finalizes the type check procedure.
     /// Calling this function indicates that all relevant information was passed on to the type checker.
     /// It will attempt to resolve all constraints and return a type table mapping each registered key to its
-    /// minimally constrained abstract type.  
+    /// minimally constrained Variant type.
     /// If any constrained caused a contradiction, it will return a [`TcErr`]: ./TcErr.html containing information about it.
-    pub fn type_check(self) -> Result<AbstractTypeTable<AbsTy>, TcErr<AbsTy>> {
-        self.graph.solve().map(AbstractTypeTable::from)
+    pub fn type_check(self) -> Result<HashMap<TcKey, V::Type>, TcErr<V>> {
+        self.graph.solve()
     }
 }
 
 /// Represents an error during the type check procedure.
 #[derive(Debug, Clone)]
-pub enum TcErr<AbsTy: Abstract> {
+pub enum TcErr<V: Variant> {
     /// Two keys were attempted to be equated and their underlying types turned out to be incompatible.
-    /// Contains the two keys and the error that occurred when attempting to meet their abstract types.
-    KeyEquation(TcKey, TcKey, AbsTy::Err),
+    /// Contains the two keys and the error that occurred when attempting to meet their Variant types.
+    KeyEquation(TcKey, TcKey, V::Err),
     /// An explicit type bound imposed on a key turned out to be incompatible with the type inferred based on
     /// remaining information on the key.  Contains the key and the error that occurred when meeting the explicit
     /// bound with the inferred type.
-    Bound(TcKey, Option<TcKey>, AbsTy::Err),
+    Bound(TcKey, Option<TcKey>, V::Err),
     /// This error occurs when a constraint accesses the `n`th child of a type and its variant turns out to only
     /// have `k < n` sub-types.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
-    ChildAccessOutOfBound(TcKey, AbsTy, usize),
+    ChildAccessOutOfBound(TcKey, V, usize),
     /// Indicates a violation of an exact type requirement for a key.  The partially or fully resolved type might
     /// be less concrete, more concrete, or incomparable.
-    ExactTypeViolation(TcKey, AbsTy),
+    ExactTypeViolation(TcKey, V),
     /// Indicates that a key has two conflicting, i.e. non-equal, exact bounds.  This can occur when imposing
     /// two exact bounds on the very same key or when two keys with conflicting types get equated.
-    ConflictingExactBounds(TcKey, AbsTy, AbsTy),
+    ConflictingExactBounds(TcKey, V, V),
+    ArityMismatch {
+        key: TcKey,
+        variant: V,
+        inferred_arity: usize,
+        reported_arity: usize,
+    },
 }

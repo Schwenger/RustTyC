@@ -1,21 +1,20 @@
-use crate::types::Abstract;
-use crate::{TcErr, TcKey};
+use crate::{types::Partial, types::Variant, TcErr, TcKey};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
-pub(crate) struct ConstraintGraph<T: Abstract> {
+pub(crate) struct ConstraintGraph<T: Variant> {
     vertices: Vec<Vertex<T>>,
 }
 
 #[derive(Debug, Clone)]
-enum Vertex<T: Abstract> {
+enum Vertex<T: Variant> {
     /// Represents a former vertex that was unified with another one and not chosen to be the representative.
     Fwd { this: TcKey, repr: TcKey },
     /// Represents a full vertex.
     Repr(FullVertex<T>),
 }
 
-impl<T: Abstract> Vertex<T> {
+impl<T: Variant> Vertex<T> {
     fn this(&self) -> TcKey {
         match self {
             Vertex::Fwd { this, .. } => *this,
@@ -33,6 +32,16 @@ impl<T: Abstract> Vertex<T> {
         }
     }
 
+    /// Grants immutable access to the underlying full vertex.
+    /// # Panics
+    /// Panics if `self` is not a full vertex.
+    fn full(&self) -> &FullVertex<T> {
+        match self {
+            Vertex::Fwd { .. } => panic!("That's not a rep!!"),
+            Vertex::Repr(vf) => vf,
+        }
+    }
+
     /// Returns the reference of the vertex representing this one.  Returns None if this vertex represents itself.
     fn get_repr_nontrans(&self) -> Option<TcKey> {
         match self {
@@ -43,28 +52,94 @@ impl<T: Abstract> Vertex<T> {
 }
 
 #[derive(Debug, Clone)]
-struct FullVertex<T: Abstract> {
-    children: Vec<Option<TcKey>>,
-    upper_bounds: Vec<TcKey>,
+struct FullVertex<T: Variant> {
     this: TcKey,
-    ty: T,
-    exact_bound: Option<T>,
+    ty: Type<T>,
 }
 
-impl<T: Abstract> Vertex<T> {
-    /// Creates a full vertex without information regarding its children.
-    fn new_niladic(this: TcKey) -> Vertex<T> {
-        Vertex::Repr(FullVertex {
-            children: Vec::new(),
-            upper_bounds: Vec::new(),
-            this,
-            ty: T::unconstrained(),
-            exact_bound: None,
-        })
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Type<V: Variant> {
+    variant: V,
+    children: Vec<Option<TcKey>>,
+    upper_bounds: Vec<TcKey>,
+}
+
+impl<V: Variant> Type<V> {
+    fn top() -> Self {
+        Type { variant: V::top(), children: Vec::new(), upper_bounds: Vec::new() }
+    }
+
+    fn set_arity(&mut self, this: TcKey, n: usize) -> Result<(), TcErr<V>> {
+        if n > self.children.len() && self.variant.fixed_arity() {
+            return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), n));
+        }
+        let required_length = n + 1;
+        ConstraintGraph::<V>::fill_with(&mut self.children, None, required_length);
+        Ok(())
+    }
+
+    fn child(&self, n: usize) -> Option<TcKey> {
+        debug_assert!(self.children.len() > n);
+        self.children[n]
+    }
+
+    fn set_child(&mut self, n: usize, child: TcKey) {
+        debug_assert!(self.children.len() > n);
+        self.children[n] = Some(child);
+    }
+
+    fn add_upper_bound(&mut self, bound: TcKey) {
+        self.upper_bounds.push(bound);
+    }
+
+    fn meet(&self, target_key: TcKey, rhs: &Self) -> Result<(Self, Vec<(TcKey, TcKey)>), TcErr<V>> {
+        // TODO: Extremely inefficient; improve.
+        let lhs = self;
+        let left_arity = lhs.children.len();
+        let right_arity = rhs.children.len();
+        let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
+        let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
+        let Partial { variant, least_arity } =
+            Variant::meet(left, right).map_err(|e| TcErr::Bound(target_key, None, e))?;
+
+        let zipped = lhs.children.iter().zip(rhs.children.iter());
+        let merges: Vec<(TcKey, TcKey)> = zipped.clone().flat_map(|(a, b)| a.zip(*b)).collect();
+        let children: Vec<Option<TcKey>> = zipped.map(|(a, b)| a.or(*b)).collect();
+        let upper_bounds: Vec<TcKey> = lhs.upper_bounds.iter().chain(rhs.upper_bounds.iter()).cloned().collect();
+
+        let mut res = Self { variant, children, upper_bounds };
+        res.set_arity(target_key, least_arity)?;
+
+        Ok((res, merges))
+    }
+
+    fn to_partial(&self) -> Partial<V> {
+        Partial { variant: self.variant.clone(), least_arity: self.children.len() }
+    }
+
+    fn with_partial(&mut self, this: TcKey, p: Partial<V>) -> Result<(), TcErr<V>> {
+        let Partial { variant, least_arity } = p;
+        if self.children.len() > least_arity && variant.fixed_arity() {
+            return Err(TcErr::ArityMismatch {
+                key: this,
+                variant,
+                inferred_arity: self.children.len(),
+                reported_arity: least_arity,
+            });
+        }
+        self.variant = variant;
+        self.set_arity(this, least_arity)
     }
 }
 
-impl<T: Abstract> ConstraintGraph<T> {
+impl<T: Variant> Vertex<T> {
+    /// Creates a full vertex without information regarding its children.
+    fn new_niladic(this: TcKey) -> Vertex<T> {
+        Vertex::Repr(FullVertex { this, ty: Type::top() })
+    }
+}
+
+impl<T: Variant> ConstraintGraph<T> {
     /// Creates an empty constraint graph.
     pub(crate) fn new() -> ConstraintGraph<T> {
         ConstraintGraph { vertices: Vec::new() }
@@ -76,38 +151,37 @@ impl<T: Abstract> ConstraintGraph<T> {
     }
 
     /// Creates and registers a new vertex.
-    pub(crate) fn new_vertex(&mut self) -> TcKey {
+    pub(crate) fn create_vertex(&mut self) -> TcKey {
+        self.new_vertex().this()
+    }
+
+    fn new_vertex(&mut self) -> &mut Vertex<T> {
         let key = TcKey::new(self.vertices.len());
         let v = Vertex::new_niladic(key);
-        self.add_vertex(v);
-        key
+        self.vertices.push(v);
+        self.vertices.last_mut().unwrap() // we just pushed it onto the vec.
     }
 
     /// Registers that a key has at least `n` children.  If this fact was already known and thus a key is already associated with the child,
     /// the key is returned without calling the `keygen` function.  Otherwise, `keygen` generates a new key which will be added to the graph regularly,
     /// associated with the child, and returned.
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
-    pub(crate) fn nth_child(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<T>> {
+    pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize) -> Result<TcKey, TcErr<T>> {
         let parent_v = self.repr_mut(parent);
-        if parent_v.ty.arity().map(|ar| ar < nth).unwrap_or(false) {
-            return Err(TcErr::ChildAccessOutOfBound(parent, parent_v.ty.clone(), nth));
-        }
-        let required_length = nth + 1;
-        Self::fill_with(&mut parent_v.children, None, required_length);
-        let nth_child = parent_v.children[nth];
+        parent_v.ty.set_arity(parent, n)?;
+        let nth_child = parent_v.ty.child(n);
         if let Some(child) = nth_child {
             return Ok(child);
         }
-        let key = self.new_vertex();
-        let vertex = self.vertex(key).this();
-        self.repr_mut(parent).children[nth] = Some(vertex);
-        Ok(key)
+        let child_key = self.create_vertex();
+        self.repr_mut(parent).ty.set_child(n, child_key);
+        Ok(child_key)
     }
 
     /// Declares an asymmetric relation between two keys.
     pub(crate) fn add_upper_bound(&mut self, target: TcKey, bound: TcKey) {
         let bound = self.repr(bound).this;
-        self.repr_mut(target).upper_bounds.push(bound)
+        self.repr_mut(target).ty.add_upper_bound(bound)
     }
 
     /// Declares a symmetric relation between two keys.
@@ -123,21 +197,6 @@ impl<T: Abstract> ConstraintGraph<T> {
         self.add_explicit_bound(target, bound).map(|_| ())
     }
 
-    /// Imposes an exact bound on a key.  When fully resolved, the types need to match _exactly_.
-    pub(crate) fn exact_bound(&mut self, target: TcKey, bound: T) -> Result<(), TcErr<T>> {
-        let target_node = self.repr_mut(target);
-        if let Some(ref old) = target_node.exact_bound {
-            if old != &bound {
-                Err(TcErr::ConflictingExactBounds(target, old.clone(), bound))
-            } else {
-                Ok(())
-            }
-        } else {
-            target_node.exact_bound = Some(bound);
-            Ok(())
-        }
-    }
-
     // INTERNAL HELPER FUNCTIONS
 
     /// Transforms `sub` into a forward to `repr`.
@@ -147,97 +206,38 @@ impl<T: Abstract> ConstraintGraph<T> {
             // out with the identity relation;  nothing to do.
             return Ok(());
         }
-        let FullVertex { this, ref ty, .. } = *self.repr(sub);
+        debug_assert_eq!(
+            sub,
+            self.repr(sub).this,
+            "Cannot establish a forward for a vertex that already is a forward."
+        );
+        let mut new_fwd = Vertex::Fwd { this: sub, repr };
+        // Replace `sub` vertex with new_fwd.
+        std::mem::swap(self.vertex_mut(sub), &mut new_fwd);
+
+        let sub_v = new_fwd.full(); // We asserted it to be a full vertex.
         let repr_v = self.repr(repr);
-        let new_ty = repr_v.ty.meet(ty).map_err(|e| TcErr::KeyEquation(this, repr_v.this, e))?;
-        assert_eq!(this, sub, "Cannot establish a forward for a vertex that already is a forward.");
-        let mut local = Vertex::Fwd { this, repr };
-        std::mem::swap(self.vertex_mut(local.this()), &mut local);
-        let sub = local.mut_full();
-        let mut rep_children = self.repr(repr).children.clone();
 
-        let max_children = usize::max(sub.children.len(), rep_children.len());
-        Self::fill_with(&mut sub.children, None, max_children);
-        Self::fill_with(&mut rep_children, None, max_children);
+        let (new_ty, merges) = repr_v.ty.meet(repr, &sub_v.ty)?;
+        merges.into_iter().map(|(a, b)| self.equate(a, b)).collect::<Result<(), TcErr<T>>>()?;
 
-        let new_children = rep_children
-            .iter()
-            .zip(sub.children.iter())
-            .map(|(c1, c2)| match (c1, c2) {
-                (None, x) | (x, None) => Ok(*x),
-                (Some(c1), Some(c2)) => {
-                    let v1 = self.repr(*c1).this;
-                    let v2 = self.repr(*c2).this;
-                    self.equate(v1, v2)?;
-                    Ok(Some(self.repr(*c1).this)) // the repr might have changed.
-                }
-            })
-            .collect::<Result<Vec<Option<TcKey>>, TcErr<T>>>()?;
-
-        // Commit changes
-        let mut repr_v = self.repr_mut(repr);
-        match (&repr_v.exact_bound, &sub.exact_bound) {
-            (None, None) | (Some(_), None) => {}
-            (None, Some(y)) => {
-                let _ = repr_v.exact_bound.replace(y.clone());
-            }
-            (Some(x), Some(y)) if x == y => {}
-            (Some(x), Some(y)) => return Err(TcErr::ConflictingExactBounds(repr_v.this, x.clone(), y.clone())),
-        };
-        repr_v.upper_bounds.extend(sub.upper_bounds.iter());
-        repr_v.children = new_children;
-        repr_v.ty = new_ty;
+        self.repr_mut(repr).ty = new_ty;
         Ok(())
     }
 
-    /// See `apply_variant`.
-    fn resolve_children_for(&mut self, target_key: TcKey) -> Result<bool, TcErr<T>> {
-        let target = self.repr_mut(target_key);
-        let arity = match target.ty.arity() {
-            None => return Ok(false),
-            Some(a) => a,
-        };
-        if target.children.len() > arity {
-            return Err(TcErr::ChildAccessOutOfBound(target.this, target.ty.clone(), target.children.len()));
-        }
-        Self::fill_with(&mut target.children, None, arity);
-        let target = self.repr(target_key); // get rid of mutable borrow
-
-        let declared =
-            target.children.iter().map(|c| c.map(|vr| self.repr(vr).ty.clone()).unwrap_or_else(T::unconstrained));
-        let children: Vec<T> = declared
-            .enumerate()
-            .map(|(ix, ty)| ty.meet(target.ty.nth_child(ix)))
-            .collect::<Result<Vec<T>, T::Err>>()
-            .map_err(|e| TcErr::Bound(target.this, None, e))?;
-        assert_eq!(arity, children.len());
-
-        let new = target.ty.with_children(children.into_iter());
-        if new != target.ty {
-            self.repr_mut(target_key).ty = new;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+    pub(crate) fn lift(&mut self, variant: T, children: Vec<Option<TcKey>>) -> TcKey {
+        let v = self.new_vertex().mut_full();
+        v.ty.variant = variant;
+        v.ty.children = children;
+        v.this
     }
 
-    fn add_vertex(&mut self, vertex: Vertex<T>) {
-        self.vertices.push(vertex);
-    }
-
-    fn add_explicit_bound(&mut self, target: TcKey, bound: T) -> Result<bool, TcErr<T>> {
-        let mut vertex = self.repr_mut(target);
-        let new = vertex.ty.meet(&bound).map_err(|e| TcErr::Bound(target, None, e))?;
-        if vertex.ty == new {
-            return Ok(false);
-        }
-        vertex.ty = new;
-        match vertex.ty.arity() {
-            Some(arity) if arity < vertex.children.len() => {
-                Err(TcErr::ChildAccessOutOfBound(target, vertex.ty.clone(), vertex.children.len()))
-            }
-            _ => Ok(true),
-        }
+    fn add_explicit_bound(&mut self, target: TcKey, bound: T) -> Result<(), TcErr<T>> {
+        let target_v = self.repr_mut(target);
+        let lhs = target_v.ty.to_partial();
+        let rhs = Partial { variant: bound, least_arity: target_v.ty.children.len() };
+        let meet = T::meet(lhs, rhs).map_err(|e| TcErr::Bound(target, None, e))?;
+        target_v.ty.with_partial(target, meet)
     }
 
     // ACCESS LOGIC
@@ -279,28 +279,51 @@ impl<T: Abstract> ConstraintGraph<T> {
     }
 }
 
-impl<T: Abstract> ConstraintGraph<T> {
+impl<T: Variant> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  
     /// Returns the type table mapping each registered key to a type if no contradiction occurs.
-    pub(crate) fn solve(mut self) -> Result<HashMap<TcKey, T>, TcErr<T>> {
+    pub(crate) fn solve(mut self) -> Result<HashMap<TcKey, T::Type>, TcErr<T>> {
         let mut change = true;
         while change {
             change = false;
             change |= self.resolve_asymmetric()?;
-            change |= self.resolve_children()?;
         }
-        if let Some(v) = self.reprs().find(|v| v.exact_bound.as_ref().map(|bound| bound != &v.ty).unwrap_or(false)) {
-            return Err(TcErr::ExactTypeViolation(v.this, v.ty.clone()));
+        self.construct_types()
+    }
+
+    fn construct_types(self) -> Result<HashMap<TcKey, T::Type>, TcErr<T>> {
+        let mut resolved: HashMap<TcKey, T::Type> = HashMap::new();
+        let mut open: Vec<&FullVertex<T>> = self.reprs().collect();
+        let top = T::top().try_construct(&Vec::new()).unwrap();
+        loop {
+            let mut still_open = Vec::with_capacity(open.len());
+            let num_open = open.len();
+            for v in open {
+                // while let Some(v) = open.pop() {
+                let children: Vec<&T::Type> =
+                    v.ty.children
+                        .iter()
+                        .flat_map(|c| if let Some(ck) = c { resolved.get(ck) } else { Some(&top) })
+                        .collect();
+                if v.ty.children.len() == children.len() {
+                    let ty =
+                        v.ty.variant
+                            .try_construct(&children.into_iter().cloned().collect::<Vec<T::Type>>())
+                            .map_err(|_| todo!())?;
+                    resolved.insert(v.this, ty);
+                } else {
+                    still_open.push(v)
+                }
+            }
+            if still_open.is_empty() {
+                break;
+            }
+            if still_open.len() == num_open {
+                panic!("How tf does this diverge?!");
+            }
+            open = still_open;
         }
-        let res = self
-            .vertices
-            .iter()
-            .map(|v| v.this())
-            .collect::<Vec<TcKey>>()
-            .into_iter()
-            .map(|k| (k, self.repr(k).ty.clone()))
-            .collect();
-        Ok(res)
+        Ok(self.vertices.into_iter().map(|v| (v.this(), resolved[&v.this()].clone())).collect())
     }
 
     /// Meets all the types of upper bounds with the type of the vertex itself.
@@ -310,34 +333,22 @@ impl<T: Abstract> ConstraintGraph<T> {
             .map(Vertex::this)
             .collect::<Vec<TcKey>>()
             .into_iter()
-            .map(|vr| {
-                let vertex = self.repr(vr);
-                let new = vertex
-                    .upper_bounds
-                    .iter()
-                    .map(|vr| {
-                        let v = &self.repr(*vr);
-                        (&v.ty, v.this)
-                    })
-                    .fold(Ok(vertex.ty.clone()), |a, (ty, key)| {
-                        a.and_then(|a| a.meet(ty).map_err(|e| TcErr::Bound(vertex.this, Some(key), e)))
+            .map(|key| {
+                let vertex = self.repr(key);
+                let initial: (Type<T>, Vec<(TcKey, TcKey)>) = (vertex.ty.clone(), Vec::new());
+                let (new_type, merges) =
+                    vertex.ty.upper_bounds.iter().map(|b| &self.repr(*b).ty).fold(Ok(initial), |lhs, rhs| {
+                        let (old_ty, mut merges) = lhs?;
+                        let (new_ty, new_merges) = old_ty.meet(key, rhs)?;
+                        merges.extend(new_merges);
+                        Ok((new_ty, merges))
                     })?;
-                let change = vertex.ty != new;
-                if change {
-                    self.repr_mut(vr).ty = new;
-                }
+                let change = vertex.ty == new_type;
+                self.repr_mut(key).ty = new_type;
+                merges.into_iter().map(|(k1, k2)| self.equate(k1, k2)).collect::<Result<Vec<()>, TcErr<T>>>()?;
                 Ok(change)
             })
-            .fold(Ok(false), |a, b| a.and_then(|a| b.map(|b| a || b)))
-    }
-
-    /// Checks and applies all constraints entailed by children and variant relations.
-    fn resolve_children(&mut self) -> Result<bool, TcErr<T>> {
-        self.reprs()
-            .map(|v| v.this)
-            .collect::<Vec<TcKey>>()
-            .into_iter()
-            .map(|vref| self.resolve_children_for(vref))
-            .fold(Ok(false), |a, b| a.and_then(|a| b.map(|b| a || b)))
+            .collect::<Result<Vec<bool>, TcErr<T>>>()
+            .map(|changes| changes.into_iter().any(|b| b))
     }
 }

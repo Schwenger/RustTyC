@@ -3,7 +3,7 @@
 //! [`TcKey`](struct.TcKey.html)s are an inexpensive and simple indexing mechanism that can be copied, checked for equality, and hashed.  
 //! A [`TcKey`](struct.TcKey.html) offers functions for relating them to other keys or types, symmetrically or asymmetrically.
 
-use crate::types::{Abstract, Generalizable};
+use crate::types::Variant;
 use std::hash::Hash;
 
 /// Represents a constraint on one or several `TcKey`s and/or types.
@@ -12,7 +12,7 @@ use std::hash::Hash;
 /// purpose.  They can then be passed to the [`TypeChecker`](struct.TypeChecker.html) via the [`Typechecker::impose()`](struct.TypeChecker.html#method.impose) function.
 #[must_use = "the creation of a `TypeConstraint` has no effect, it should be passed to a `TypeChecker`"]
 #[derive(Debug, Clone)]
-pub enum Constraint<AbsTy: Abstract> {
+pub enum Constraint<V: Variant> {
     /// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
     #[doc(hidden)]
     Equal(TcKey, TcKey),
@@ -29,10 +29,7 @@ pub enum Constraint<AbsTy: Abstract> {
     },
     /// An asymmetric relation between a key and a type.  Note that the type cannot change over time.
     #[doc(hidden)]
-    MoreConcExplicit(TcKey, AbsTy),
-
-    /// Checks if the type behind the key is exactly AbsTy.
-    ExactType(TcKey, AbsTy),
+    MoreConcExplicit(TcKey, V),
 
     /// A conjunction of several constraints.
     #[doc(hidden)]
@@ -227,47 +224,44 @@ impl TcKey {
 
 impl TcKey {
     /// Connects two keys asymmetrically.  Refining `bound` refines `self` whereas refining `self` leaves `bound` unaffected.
-    pub fn concretizes<AbsTy: Abstract>(self, bound: Self) -> Constraint<AbsTy> {
+    pub fn concretizes<V: Variant>(self, bound: Self) -> Constraint<V> {
         Constraint::MoreConc { target: self, bound }
     }
     /// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
-    pub fn equate_with<AbsTy: Abstract>(self, other: Self) -> Constraint<AbsTy> {
+    pub fn equate_with<V: Variant>(self, other: Self) -> Constraint<V> {
         assert_ne!(self, other, "Cannot equate equal keys.");
         Constraint::Equal(self, other)
     }
     /// Declares that `self` is at least as concrete as `bound`.
-    pub fn concretizes_explicit<AbsTy: Abstract>(self, bound: AbsTy) -> Constraint<AbsTy> {
+    pub fn concretizes_explicit<V: Variant>(self, bound: V) -> Constraint<V> {
         Constraint::MoreConcExplicit(self, bound)
     }
     /// Declares that `self` is the meet of `left` and `right`.  
     /// This binds `self` to both `left` and `right` asymmetrically.
-    pub fn is_meet_of<AbsTy: Abstract>(self, left: Self, right: Self) -> Constraint<AbsTy> {
+    pub fn is_meet_of<V: Variant>(self, left: Self, right: Self) -> Constraint<V> {
         self.is_meet_of_all(&[left, right])
     }
     /// Declares that `self` is the meet of all elements contained in `elems`.  
     /// This binds `self` to all of these keys asymmetrically.
-    pub fn is_meet_of_all<AbsTy: Abstract>(self, elems: &[Self]) -> Constraint<AbsTy> {
+    pub fn is_meet_of_all<V: Variant>(self, elems: &[Self]) -> Constraint<V> {
         Constraint::Conjunction(elems.iter().map(|e| self.concretizes(*e)).collect())
     }
     /// Declares that `self` is the symmetric meet of `left` and `right`.  
     /// This binds `self` to both `left` and `right` symmetrically.
-    pub fn is_sym_meet_of<AbsTy: Abstract>(self, left: Self, right: Self) -> Constraint<AbsTy> {
+    pub fn is_sym_meet_of<V: Variant>(self, left: Self, right: Self) -> Constraint<V> {
         self.is_sym_meet_of_all(&[left, right])
     }
     /// Declares that `self` is the symmetric meet of all elements contained in `elems`.  
     /// This binds `self` to all of these keys symmetrically.
-    pub fn is_sym_meet_of_all<AbsTy: Abstract>(self, elems: &[Self]) -> Constraint<AbsTy> {
+    pub fn is_sym_meet_of_all<V: Variant>(self, elems: &[Self]) -> Constraint<V> {
         Constraint::Conjunction(elems.iter().map(|e| self.equate_with(*e)).collect())
     }
-    /// Ensures that the type behind `self` is exactly `ty`.  As a consequence, this implicitly imposes `ty` as lower bound for `self`.
-    pub fn has_exactly_type<AbsTy: Abstract>(self, ty: AbsTy) -> Constraint<AbsTy> {
-        Constraint::Conjunction(vec![Constraint::ExactType(self, ty.clone()), self.concretizes_explicit(ty)])
-    }
-    /// Declares that `self` is at least as concrete as the abstracted version of `conc`.
-    pub fn concretizes_concrete<AbsTy: Abstract, CT>(self, conc: CT) -> Constraint<AbsTy>
-    where
-        CT: Generalizable<Generalized = AbsTy>,
-    {
-        self.concretizes_explicit(conc.generalize())
-    }
+
+    // /// Declares that `self` is at least as concrete as the abstracted version of `conc`.
+    // pub fn concretizes_concrete<V: Variant, CT>(self, conc: CT) -> Constraint<V>
+    // where
+    //     CT: Generalizable<Generalized = V>,
+    // {
+    //     self.concretizes_explicit(conc.generalize())
+    // }
 }
