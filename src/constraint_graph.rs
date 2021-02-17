@@ -1,4 +1,8 @@
-use crate::{types::Partial, types::Variant, TcErr, TcKey};
+use crate::{
+    types::Partial,
+    types::{Constructable, Preliminary, PreliminaryTypeTable, TypeTable, Variant},
+    TcErr, TcKey,
+};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -64,6 +68,7 @@ struct Type<V: Variant> {
     upper_bounds: Vec<TcKey>,
 }
 
+type EquateObligation = Vec<(TcKey, TcKey)>;
 impl<V: Variant> Type<V> {
     fn top() -> Self {
         Type { variant: V::top(), children: Vec::new(), upper_bounds: Vec::new() }
@@ -92,7 +97,7 @@ impl<V: Variant> Type<V> {
         self.upper_bounds.push(bound);
     }
 
-    fn meet(&self, target_key: TcKey, rhs: &Self) -> Result<(Self, Vec<(TcKey, TcKey)>), TcErr<V>> {
+    fn meet(&self, target_key: TcKey, rhs: &Self) -> Result<(Self, EquateObligation), TcErr<V>> {
         // TODO: Extremely inefficient; improve.
         let lhs = self;
         let left_arity = lhs.children.len();
@@ -103,14 +108,14 @@ impl<V: Variant> Type<V> {
             Variant::meet(left, right).map_err(|e| TcErr::Bound(target_key, None, e))?;
 
         let zipped = lhs.children.iter().zip(rhs.children.iter());
-        let merges: Vec<(TcKey, TcKey)> = zipped.clone().flat_map(|(a, b)| a.zip(*b)).collect();
+        let equates: EquateObligation = zipped.clone().flat_map(|(a, b)| a.zip(*b)).collect();
         let children: Vec<Option<TcKey>> = zipped.map(|(a, b)| a.or(*b)).collect();
         let upper_bounds: Vec<TcKey> = lhs.upper_bounds.iter().chain(rhs.upper_bounds.iter()).cloned().collect();
 
         let mut res = Self { variant, children, upper_bounds };
         res.set_arity(target_key, least_arity)?;
 
-        Ok((res, merges))
+        Ok((res, equates))
     }
 
     fn to_partial(&self) -> Partial<V> {
@@ -129,6 +134,10 @@ impl<V: Variant> Type<V> {
         }
         self.variant = variant;
         self.set_arity(this, least_arity)
+    }
+
+    fn to_preliminary(&self) -> Preliminary<V> {
+        Preliminary { variant: self.variant.clone(), children: self.children.clone() }
     }
 }
 
@@ -218,8 +227,8 @@ impl<T: Variant> ConstraintGraph<T> {
         let sub_v = new_fwd.full(); // We asserted it to be a full vertex.
         let repr_v = self.repr(repr);
 
-        let (new_ty, merges) = repr_v.ty.meet(repr, &sub_v.ty)?;
-        merges.into_iter().map(|(a, b)| self.equate(a, b)).collect::<Result<(), TcErr<T>>>()?;
+        let (new_ty, equates) = repr_v.ty.meet(repr, &sub_v.ty)?;
+        equates.into_iter().try_for_each(|(a, b)| self.equate(a, b))?;
 
         self.repr_mut(repr).ty = new_ty;
         Ok(())
@@ -282,34 +291,83 @@ impl<T: Variant> ConstraintGraph<T> {
 impl<T: Variant> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  
     /// Returns the type table mapping each registered key to a type if no contradiction occurs.
-    pub(crate) fn solve(mut self) -> Result<HashMap<TcKey, T::Type>, TcErr<T>> {
+    fn solve_constraints(&mut self) -> Result<(), TcErr<T>> {
         let mut change = true;
         while change {
             change = false;
             change |= self.resolve_asymmetric()?;
         }
+        Ok(())
+    }
+
+    pub(crate) fn solve_preliminary(mut self) -> Result<PreliminaryTypeTable<T>, TcErr<T>> {
+        self.solve_constraints()?;
+        Ok(self.construct_preliminary())
+    }
+
+    fn construct_preliminary(self) -> PreliminaryTypeTable<T> {
+        self.vertices
+            .iter()
+            .map(|v| v.this())
+            .collect::<Vec<TcKey>>()
+            .into_iter()
+            .map(|key| (key, self.repr(key).ty.to_preliminary()))
+            .collect()
+    }
+
+    /// Meets all the types of upper bounds with the type of the vertex itself.
+    fn resolve_asymmetric(&mut self) -> Result<bool, TcErr<T>> {
+        self.vertices
+            .iter()
+            .map(Vertex::this)
+            .collect::<Vec<TcKey>>()
+            .into_iter()
+            .map(|key| {
+                let vertex = self.repr(key);
+                let initial: (Type<T>, EquateObligation) = (vertex.ty.clone(), Vec::new());
+                let (new_type, equates) =
+                    vertex.ty.upper_bounds.iter().map(|b| &self.repr(*b).ty).fold(Ok(initial), |lhs, rhs| {
+                        let (old_ty, mut equates) = lhs?;
+                        let (new_ty, new_equates) = old_ty.meet(key, rhs)?;
+                        equates.extend(new_equates);
+                        Ok((new_ty, equates))
+                    })?;
+                let change = vertex.ty == new_type;
+                self.repr_mut(key).ty = new_type;
+                equates.into_iter().try_for_each(|(k1, k2)| self.equate(k1, k2))?;
+                Ok(change)
+            })
+            .collect::<Result<Vec<bool>, TcErr<T>>>()
+            .map(|changes| changes.into_iter().any(|b| b))
+    }
+}
+
+impl<V> ConstraintGraph<V>
+where
+    V: Variant + Constructable,
+{
+    pub(crate) fn solve(mut self) -> Result<TypeTable<V>, TcErr<V>> {
+        self.solve_constraints()?;
         self.construct_types()
     }
 
-    fn construct_types(self) -> Result<HashMap<TcKey, T::Type>, TcErr<T>> {
-        let mut resolved: HashMap<TcKey, T::Type> = HashMap::new();
-        let mut open: Vec<&FullVertex<T>> = self.reprs().collect();
-        let top = T::top().try_construct(&Vec::new()).unwrap();
+    fn construct_types(self) -> Result<TypeTable<V>, TcErr<V>> {
+        let mut resolved: HashMap<TcKey, V::Type> = HashMap::new();
+        let mut open: Vec<&FullVertex<V>> = self.reprs().collect();
+        let top = V::top().construct(&[]).map_err(|e| TcErr::Construction(Preliminary::top(), e))?;
         loop {
             let mut still_open = Vec::with_capacity(open.len());
             let num_open = open.len();
             for v in open {
-                // while let Some(v) = open.pop() {
-                let children: Vec<&T::Type> =
+                let children: Vec<&V::Type> =
                     v.ty.children
                         .iter()
                         .flat_map(|c| if let Some(ck) = c { resolved.get(ck) } else { Some(&top) })
                         .collect();
                 if v.ty.children.len() == children.len() {
+                    let children = children.into_iter().cloned().collect::<Vec<V::Type>>();
                     let ty =
-                        v.ty.variant
-                            .try_construct(&children.into_iter().cloned().collect::<Vec<T::Type>>())
-                            .map_err(|_| todo!())?;
+                        v.ty.variant.construct(&children).map_err(|e| TcErr::Construction(v.ty.to_preliminary(), e))?;
                     resolved.insert(v.this, ty);
                 } else {
                     still_open.push(v)
@@ -323,32 +381,6 @@ impl<T: Variant> ConstraintGraph<T> {
             }
             open = still_open;
         }
-        Ok(self.vertices.into_iter().map(|v| (v.this(), resolved[&v.this()].clone())).collect())
-    }
-
-    /// Meets all the types of upper bounds with the type of the vertex itself.
-    fn resolve_asymmetric(&mut self) -> Result<bool, TcErr<T>> {
-        self.vertices
-            .iter()
-            .map(Vertex::this)
-            .collect::<Vec<TcKey>>()
-            .into_iter()
-            .map(|key| {
-                let vertex = self.repr(key);
-                let initial: (Type<T>, Vec<(TcKey, TcKey)>) = (vertex.ty.clone(), Vec::new());
-                let (new_type, merges) =
-                    vertex.ty.upper_bounds.iter().map(|b| &self.repr(*b).ty).fold(Ok(initial), |lhs, rhs| {
-                        let (old_ty, mut merges) = lhs?;
-                        let (new_ty, new_merges) = old_ty.meet(key, rhs)?;
-                        merges.extend(new_merges);
-                        Ok((new_ty, merges))
-                    })?;
-                let change = vertex.ty == new_type;
-                self.repr_mut(key).ty = new_type;
-                merges.into_iter().map(|(k1, k2)| self.equate(k1, k2)).collect::<Result<Vec<()>, TcErr<T>>>()?;
-                Ok(change)
-            })
-            .collect::<Result<Vec<bool>, TcErr<T>>>()
-            .map(|changes| changes.into_iter().any(|b| b))
+        Ok(self.vertices.iter().map(|v| (v.this(), resolved[&self.repr(v.this()).this].clone())).collect())
     }
 }

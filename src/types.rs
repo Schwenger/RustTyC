@@ -9,7 +9,9 @@
 //! * Generalization is the infallible process of transforming a concrete type into an abstract one represented by [`Generalizable`](trait.Generalizable.html)
 //! * [`TypeTable`](trait.TypeTable.html) contains a mapping from a [`TcKey`](../struct.TcKey.html) to an [`Abstract`](trait.Abstract.html) or reified type.
 
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
+
+use crate::TcKey;
 
 // /// An abstract type that will be inferred during the type checking procedure.
 // ///
@@ -84,158 +86,57 @@ pub struct Partial<V: Variant> {
 }
 
 pub trait Variant: Sized + Clone + Debug + Eq {
-    type Type: Debug + Clone; // Concrete type
+    // type Type: Debug + Clone; // Concrete type
     type Err: Debug;
     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err>;
     fn fixed_arity(&self) -> bool;
-    fn try_construct(&self, children: &[Self::Type]) -> Result<Self::Type, Self::Err>;
+    // fn try_construct(&self, children: &[Self::Type]) -> Result<Self::Type, Self::Err>;
     fn top() -> Self;
 }
 
-// /// Indicates that an abstract type could not be reified because it is too general or too restrictive.
-// ///
-// /// # Example
-// /// 1. A numeric type cannot be reified into any concrete value because the concrete counterpart could be a natural
-// /// number, integer, floating point number, .... -> `ReificationErr::TooGeneral`
-// /// 2. An integer type cannot be reified into a concrete type with fixed memory layout except a default size is
-// /// defined, e.g. an Int will be reified into an Int32. -> `ReificationErr::TooGeneral`
-// /// 3. An unbounded integer might not have a concrete counterpart because the system requires a concrete bit size.
-// /// -> `ReificationErr::Conflicting`
-// ///
-// /// Note the subtle difference between `ReificationErr::TooGeneral` and `ReificationErr::Conflicting`:
-// ///     + In the `Conflicting` case there is no concrete counterpart
-// ///     + In the `TooGeneral` case the concrete counterpart is not defined or not unique but could exist.
-// #[derive(Debug, Clone)]
-// pub enum ReificationErr {
-//     /// Attempting to reify an abstract type with either no unique concrete counterpart or with no defined default
-//     /// reification value results in this error.
-//     TooGeneral(String),
-//     /// Attempting to reify an abstract type for which no concrete counterpart does exist results in this error.
-//     Conflicting(String),
-// }
+#[derive(Debug, Clone)]
+pub struct Preliminary<V: Variant> {
+    pub variant: V,
+    pub children: Vec<Option<TcKey>>,
+}
 
-// /// A type implementing this trait can be `reified` into a concrete representation.
-// /// This transformation cannot fail.  If it is fallible, refer to [`TryReifiable`](trait.TryReifiable.html).
-// pub trait Reifiable {
-//     /// The result type of the reification.
-//     type Reified;
-//     /// Transforms `self` into the more concrete `Self::Reified` type.
-//     fn reify(&self) -> Self::Reified;
-// }
+impl<V: Variant> Preliminary<V> {
+    pub(crate) fn top() -> Self {
+        Self { variant: V::top(), children: Vec::new() }
+    }
+}
 
-// /// A type implementing this trait can potentially be `reified` into a concrete representation.
-// /// This transformation can fail.  If it is infallible, refer to [`Reifiable`](trait.Reifiable.html).
-// pub trait TryReifiable {
-//     /// The result type of the attempted reification.
-//     type Reified;
-//     /// Attempts to transform `self` into an more concrete `Self::Reified` type.
-//     /// Returns a [`ReificationErr`](enum.ReificationErr.html) if the transformation fails.
-//     fn try_reify(&self) -> Result<Self::Reified, ReificationErr>;
-// }
+pub type PreliminaryTypeTable<V> = HashMap<TcKey, Preliminary<V>>;
+pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
 
-// /// A type implementing this trait can be `generalized` into an abstract representation infallibly.
-// pub trait Generalizable {
-//     /// The result type of the generalization.
-//     type Generalized;
-//     /// Generalizes the given concrete type.
-//     fn generalize(&self) -> Self::Generalized;
-// }
+/// Indicates that an abstract type could not be reified because it is too general or too restrictive.
+///
+/// # Example
+/// 1. A numeric type cannot be reified into any concrete value because the concrete counterpart could be a natural
+/// number, integer, floating point number, .... -> `ReificationErr::TooGeneral`
+/// 2. An integer type cannot be reified into a concrete type with fixed memory layout except a default size is
+/// defined, e.g. an Int will be reified into an Int32. -> `ReificationErr::TooGeneral`
+/// 3. An unbounded integer might not have a concrete counterpart because the system requires a concrete bit size.
+/// -> `ReificationErr::Conflicting`
+///
+/// Note the subtle difference between `ReificationErr::TooGeneral` and `ReificationErr::Conflicting`:
+///     + In the `Conflicting` case there is no concrete counterpart
+///     + In the `TooGeneral` case the concrete counterpart is not defined or not unique but could exist.
+#[derive(Debug, Clone)]
+pub enum ConstructionErr {
+    /// Attempting to reify an abstract type with either no unique concrete counterpart or with no defined default
+    /// reification value results in this error.
+    TooGeneral(String),
+    /// Attempting to reify an abstract type for which no concrete counterpart does exist results in this error.
+    Conflicting(String),
+}
 
-// /// A trait representing a type table.
-// ///
-// /// It maps [`TcKey`](../struct.TcKey.html) to `Self::Type` and allows for an automatic transformation into a hashmap.
-// pub trait TypeTable: Index<TcKey> {
-//     /// The (rust-) type of the (external-) type stored in this type table.
-//     type Type;
-
-//     /// Transforms itself into a hashmap.
-//     fn as_hashmap(self) -> HashMap<TcKey, Self::Type>;
-// }
-
-// /// An implementation of [`TypeTable`](trait.TypeTable.html) for type implementing [`Abstract`](trait.Abstract.html).
-// /// See [`ReifiedTypeTable`](struct.ReifiedTypeTable.html) for an implementation specializing on
-// /// concrete types.
-// ///
-// /// Can automatically be generated from a `HashMap<TcKey, AbsTy>` for `AbsTy: Abstract`.
-// #[derive(Debug, Clone)]
-// pub struct AbstractTypeTable<AbsTy: Abstract> {
-//     table: HashMap<TcKey, AbsTy>,
-// }
-
-// impl<AbsTy: Abstract> Index<TcKey> for AbstractTypeTable<AbsTy> {
-//     type Output = AbsTy;
-//     fn index(&self, index: TcKey) -> &Self::Output {
-//         &self.table[&index]
-//     }
-// }
-
-// impl<AbsTy: Abstract> From<HashMap<TcKey, AbsTy>> for AbstractTypeTable<AbsTy> {
-//     fn from(map: HashMap<TcKey, AbsTy>) -> Self {
-//         AbstractTypeTable { table: map }
-//     }
-// }
-
-// /// An implementation of [`TypeTable`](trait.TypeTable.html) for concrete types.
-// /// See [`AbstractTypeTable`](struct.AbstractTypeTable.html) for an implementation specializing on
-// /// abstract types.
-// ///
-// /// Can automatically be generated from a `HashMap<TcKey, Concrete>`.
-// #[derive(Debug, Clone)]
-// pub struct ReifiedTypeTable<Concrete> {
-//     table: HashMap<TcKey, Concrete>,
-// }
-
-// impl<Concrete> Index<TcKey> for ReifiedTypeTable<Concrete> {
-//     type Output = Concrete;
-//     fn index(&self, index: TcKey) -> &Self::Output {
-//         &self.table[&index]
-//     }
-// }
-
-// impl<Concrete> From<HashMap<TcKey, Concrete>> for ReifiedTypeTable<Concrete> {
-//     fn from(map: HashMap<TcKey, Concrete>) -> Self {
-//         ReifiedTypeTable { table: map }
-//     }
-// }
-
-// impl<AbsTy: Abstract> TypeTable for AbstractTypeTable<AbsTy> {
-//     type Type = AbsTy;
-
-//     fn as_hashmap(self) -> HashMap<TcKey, Self::Type> {
-//         self.table
-//     }
-// }
-
-// impl<Concrete> TypeTable for ReifiedTypeTable<Concrete> {
-//     type Type = Concrete;
-
-//     fn as_hashmap(self) -> HashMap<TcKey, Self::Type> {
-//         self.table
-//     }
-// }
-
-// impl<AbsTy> AbstractTypeTable<AbsTy>
-// where
-//     AbsTy: Abstract + Reifiable,
-// {
-//     /// Transforms an [`AbstractTypeTable`](struct.AbstractTypeTable.html) into a [`ReifiedTypeTable`](struct.ReifiedTypeTable.html)
-//     /// by reifying all abstract types.
-//     pub fn reified(self) -> ReifiedTypeTable<AbsTy::Reified> {
-//         ReifiedTypeTable { table: self.table.into_iter().map(|(key, ty)| (key, ty.reify())).collect() }
-//     }
-// }
-
-// impl<AbsTy> AbstractTypeTable<AbsTy>
-// where
-//     AbsTy: Abstract + TryReifiable,
-// {
-//     /// Attempts to transform an [`AbstractTypeTable`](struct.AbstractTypeTable.html) into a [`ReifiedTypeTable`](struct.ReifiedTypeTable.html)
-//     /// by reifying all abstract types.
-//     pub fn try_reified(self) -> Result<ReifiedTypeTable<AbsTy::Reified>, ReificationErr> {
-//         self.table
-//             .into_iter()
-//             .map(|(key, ty)| ty.try_reify().map(|re| (key, re)))
-//             .collect::<Result<HashMap<TcKey, AbsTy::Reified>, ReificationErr>>()
-//             .map(|table| ReifiedTypeTable { table })
-//     }
-// }
+/// A type implementing this trait can potentially be `reified` into a concrete representation.
+/// This transformation can fail.  If it is infallible, refer to [`Reifiable`](trait.Reifiable.html).
+pub trait Constructable: Sized {
+    /// The result type of the attempted reification.
+    type Type: Clone + Debug;
+    /// Attempts to transform `self` into an more concrete `Self::Reified` type.
+    /// Returns a [`ReificationErr`](enum.ReificationErr.html) if the transformation fails.
+    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, ConstructionErr>;
+}

@@ -1,6 +1,9 @@
-use crate::constraint_graph::ConstraintGraph;
-use crate::keys::{Constraint, TcKey};
-use crate::types::Variant;
+use crate::types::{Constructable, PreliminaryTypeTable, TypeTable, Variant};
+use crate::{constraint_graph::ConstraintGraph, types::ConstructionErr};
+use crate::{
+    keys::{Constraint, TcKey},
+    types::Preliminary,
+};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -114,7 +117,21 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     /// It will attempt to resolve all constraints and return a type table mapping each registered key to its
     /// minimally constrained Variant type.
     /// If any constrained caused a contradiction, it will return a [`TcErr`]: ./TcErr.html containing information about it.
-    pub fn type_check(self) -> Result<HashMap<TcKey, V::Type>, TcErr<V>> {
+    pub fn type_check_preliminary(self) -> Result<PreliminaryTypeTable<V>, TcErr<V>> {
+        self.graph.solve_preliminary()
+    }
+}
+
+impl<V, Var: TcVar> TypeChecker<V, Var>
+where
+    V: Variant + Constructable,
+{
+    /// Finalizes the type check procedure.
+    /// Calling this function indicates that all relevant information was passed on to the type checker.
+    /// It will attempt to resolve all constraints and return a type table mapping each registered key to its
+    /// minimally constrained Variant type.
+    /// If any constrained caused a contradiction, it will return a [`TcErr`]: ./TcErr.html containing information about it.
+    pub fn type_check(self) -> Result<TypeTable<V>, TcErr<V>> {
         self.graph.solve()
     }
 }
@@ -134,16 +151,11 @@ pub enum TcErr<V: Variant> {
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
     ChildAccessOutOfBound(TcKey, V, usize),
-    /// Indicates a violation of an exact type requirement for a key.  The partially or fully resolved type might
-    /// be less concrete, more concrete, or incomparable.
-    ExactTypeViolation(TcKey, V),
-    /// Indicates that a key has two conflicting, i.e. non-equal, exact bounds.  This can occur when imposing
-    /// two exact bounds on the very same key or when two keys with conflicting types get equated.
-    ConflictingExactBounds(TcKey, V, V),
     ArityMismatch {
         key: TcKey,
         variant: V,
         inferred_arity: usize,
         reported_arity: usize,
     },
+    Construction(Preliminary<V>, ConstructionErr),
 }
