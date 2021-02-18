@@ -12,3 +12,6 @@ categories = ["parsing"]
 
 [[example]]
 name = "parametrized_function"
+
+[dependencies]
+log = "0.4.14"

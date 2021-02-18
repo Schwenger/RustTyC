@@ -5,6 +5,12 @@ use crate::{
 };
 use std::collections::HashMap;
 
+#[cfg(not(test))]
+use log::trace;
+
+#[cfg(test)]
+use std::println as trace;
+
 #[derive(Debug, Clone)]
 pub(crate) struct ConstraintGraph<T: Variant> {
     vertices: Vec<Vertex<T>>,
@@ -75,6 +81,7 @@ impl<V: Variant> Type<V> {
     }
 
     fn set_arity(&mut self, this: TcKey, n: usize) -> Result<(), TcErr<V>> {
+        trace!("Setting arity of {:?} to {}", this, n);
         if n > self.children.len() && self.variant.fixed_arity() {
             return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), n));
         }
@@ -83,20 +90,24 @@ impl<V: Variant> Type<V> {
     }
 
     fn child(&self, n: usize) -> Option<TcKey> {
+        trace!("Accessing child {} of variant {:?}", n, &self.variant);
         debug_assert!(self.children.len() > n);
         self.children[n]
     }
 
     fn set_child(&mut self, n: usize, child: TcKey) {
+        trace!("Setting child {} of variant {:?} to {:?}", n, &self.variant, child);
         debug_assert!(self.children.len() > n);
         self.children[n] = Some(child);
     }
 
     fn add_upper_bound(&mut self, bound: TcKey) {
+        trace!("Adding upper bound {:?} to variant {:?}", bound, &self.variant);
         self.upper_bounds.push(bound);
     }
 
     fn meet(&self, target_key: TcKey, rhs: &Self) -> Result<(Self, EquateObligation), TcErr<V>> {
+        trace!("Meeting the variants {:?} and {:?} for {:?},", &self.variant, &rhs.variant, target_key);
         // TODO: Extremely inefficient; improve.
         let lhs = self;
         let left_arity = lhs.children.len();
@@ -114,6 +125,7 @@ impl<V: Variant> Type<V> {
         let mut res = Self { variant, children, upper_bounds };
         res.set_arity(target_key, least_arity)?;
 
+        trace!("Created {:?}", res);
         Ok((res, equates))
     }
 
@@ -122,6 +134,7 @@ impl<V: Variant> Type<V> {
     }
 
     fn with_partial(&mut self, this: TcKey, p: Partial<V>) -> Result<(), TcErr<V>> {
+        trace!("Incorporating partial {:?} into {:?} with variant {:?}", &p, this, &self.variant);
         let Partial { variant, least_arity } = p;
         if self.children.len() > least_arity && variant.fixed_arity() {
             return Err(TcErr::ArityMismatch {
@@ -132,6 +145,7 @@ impl<V: Variant> Type<V> {
             });
         }
         self.variant = variant;
+        trace!("Is now variant {:?}.", &self.variant);
         self.set_arity(this, least_arity)
     }
 
@@ -167,6 +181,7 @@ impl<T: Variant> ConstraintGraph<T> {
         let key = TcKey::new(self.vertices.len());
         let v = Vertex::new_niladic(key);
         self.vertices.push(v);
+        trace!("Created new key: {:?}", key);
         self.vertices.last_mut().unwrap() // we just pushed it onto the vec.
     }
 
@@ -214,11 +229,7 @@ impl<T: Variant> ConstraintGraph<T> {
             // out with the identity relation;  nothing to do.
             return Ok(());
         }
-        debug_assert_eq!(
-            sub,
-            self.repr(sub).this,
-            "Cannot establish a forward for a vertex that already is a forward."
-        );
+        debug_assert_eq!(sub, self.repr(sub).this, "cannot establish a forward for a vertex that already is a forward");
         let mut new_fwd = Vertex::Fwd { this: sub, repr };
         // Replace `sub` vertex with new_fwd.
         std::mem::swap(self.vertex_mut(sub), &mut new_fwd);
@@ -331,7 +342,9 @@ impl<T: Variant> ConstraintGraph<T> {
                         equates.extend(new_equates);
                         Ok((new_ty, equates))
                     })?;
-                let change = vertex.ty == new_type;
+                trace!("Incorporating asym data. {:?} became {:?}.", &vertex.ty, &new_type);
+                let change = vertex.ty != new_type;
+                trace!("Change detected: {}.", change);
                 self.repr_mut(key).ty = new_type;
                 equates.into_iter().try_for_each(|(k1, k2)| self.equate(k1, k2))?;
                 Ok(change)
