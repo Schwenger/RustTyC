@@ -78,8 +78,7 @@ impl<V: Variant> Type<V> {
         if n > self.children.len() && self.variant.fixed_arity() {
             return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), n));
         }
-        let required_length = n + 1;
-        ConstraintGraph::<V>::fill_with(&mut self.children, None, required_length);
+        ConstraintGraph::<V>::fill_with(&mut self.children, None, n);
         Ok(())
     }
 

@@ -57,6 +57,7 @@ Forget everything that was there before.
 ### Remove
 
 * Exact type bounds.
+* Bounding TcKeys by concrete types.
 
 ### 
 
