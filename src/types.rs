@@ -81,8 +81,8 @@ use crate::TcKey;
 
 #[derive(Debug, Clone)]
 pub struct Partial<V: Variant> {
-    pub(crate) variant: V,
-    pub(crate) least_arity: usize,
+    pub variant: V,
+    pub least_arity: usize,
 }
 
 pub trait Variant: Sized + Clone + Debug + Eq {
