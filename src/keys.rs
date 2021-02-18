@@ -256,12 +256,4 @@ impl TcKey {
     pub fn is_sym_meet_of_all<V: Variant>(self, elems: &[Self]) -> Constraint<V> {
         Constraint::Conjunction(elems.iter().map(|e| self.equate_with(*e)).collect())
     }
-
-    // /// Declares that `self` is at least as concrete as the abstracted version of `conc`.
-    // pub fn concretizes_concrete<V: Variant, CT>(self, conc: CT) -> Constraint<V>
-    // where
-    //     CT: Generalizable<Generalized = V>,
-    // {
-    //     self.concretizes_explicit(conc.generalize())
-    // }
 }

@@ -3,7 +3,7 @@ use crate::{
     types::{Constructable, Preliminary, PreliminaryTypeTable, TypeTable, Variant},
     TcErr, TcKey,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[cfg(not(test))]
 use log::trace;
@@ -71,13 +71,13 @@ struct FullVertex<T: Variant> {
 struct Type<V: Variant> {
     variant: V,
     children: Vec<Option<TcKey>>,
-    upper_bounds: Vec<TcKey>,
+    upper_bounds: HashSet<TcKey>,
 }
 
 type EquateObligation = Vec<(TcKey, TcKey)>;
 impl<V: Variant> Type<V> {
     fn top() -> Self {
-        Type { variant: V::top(), children: Vec::new(), upper_bounds: Vec::new() }
+        Type { variant: V::top(), children: Vec::new(), upper_bounds: HashSet::new() }
     }
 
     fn set_arity(&mut self, this: TcKey, n: usize) -> Result<(), TcErr<V>> {
@@ -103,7 +103,7 @@ impl<V: Variant> Type<V> {
 
     fn add_upper_bound(&mut self, bound: TcKey) {
         trace!("Adding upper bound {:?} to variant {:?}", bound, &self.variant);
-        self.upper_bounds.push(bound);
+        self.upper_bounds.insert(bound);
     }
 
     fn meet(&self, target_key: TcKey, rhs: &Self) -> Result<(Self, EquateObligation), TcErr<V>> {
@@ -120,7 +120,7 @@ impl<V: Variant> Type<V> {
         let zipped = lhs.children.iter().zip(rhs.children.iter());
         let equates: EquateObligation = zipped.clone().flat_map(|(a, b)| a.zip(*b)).collect();
         let children: Vec<Option<TcKey>> = zipped.map(|(a, b)| a.or(*b)).collect();
-        let upper_bounds: Vec<TcKey> = lhs.upper_bounds.iter().chain(rhs.upper_bounds.iter()).cloned().collect();
+        let upper_bounds: HashSet<TcKey> = lhs.upper_bounds.iter().chain(rhs.upper_bounds.iter()).cloned().collect(); // todo: setify
 
         let mut res = Self { variant, children, upper_bounds };
         res.set_arity(target_key, least_arity)?;
@@ -356,7 +356,7 @@ impl<T: Variant> ConstraintGraph<T> {
 
 impl<V> ConstraintGraph<V>
 where
-    V: Variant + Constructable,
+    V: Constructable,
 {
     pub(crate) fn solve(mut self) -> Result<TypeTable<V>, TcErr<V>> {
         self.solve_constraints()?;
@@ -366,20 +366,30 @@ where
     fn construct_types(self) -> Result<TypeTable<V>, TcErr<V>> {
         let mut resolved: HashMap<TcKey, V::Type> = HashMap::new();
         let mut open: Vec<&FullVertex<V>> = self.reprs().collect();
-        let top = V::top().construct(&[]).map_err(|e| TcErr::Construction(Preliminary::top(), e))?;
         loop {
             let mut still_open = Vec::with_capacity(open.len());
             let num_open = open.len();
             for v in open {
-                let children: Vec<&V::Type> =
+                let children: Option<Vec<V::Type>> =
                     v.ty.children
                         .iter()
-                        .flat_map(|c| if let Some(ck) = c { resolved.get(ck) } else { Some(&top) })
-                        .collect();
-                if v.ty.children.len() == children.len() {
-                    let children = children.into_iter().cloned().collect::<Vec<V::Type>>();
+                        .enumerate()
+                        .map(|(ix, c)| {
+                            if let Some(key) = c {
+                                Ok(resolved.get(key).cloned())
+                            } else {
+                                V::construct(&V::top(), &Vec::new())
+                                    .map(Some)
+                                    .map_err(|e| TcErr::ChildConstruction(v.this, ix, v.ty.to_preliminary(), e))
+                            }
+                        })
+                        .collect::<Result<Option<Vec<V::Type>>, TcErr<V>>>()?;
+                if let Some(children) = children {
+                    // let children = children.into_iter().cloned().collect::<Vec<V::Type>>();
                     let ty =
-                        v.ty.variant.construct(&children).map_err(|e| TcErr::Construction(v.ty.to_preliminary(), e))?;
+                        v.ty.variant
+                            .construct(&children)
+                            .map_err(|e| TcErr::Construction(v.this, v.ty.to_preliminary(), e))?;
                     resolved.insert(v.this, ty);
                 } else {
                     still_open.push(v)
