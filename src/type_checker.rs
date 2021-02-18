@@ -52,6 +52,19 @@ impl<V: Variant, Var: TcVar> Default for TypeChecker<V, Var> {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct NoVars {
+    unit: (), // Prevents external creation.
+}
+impl TcVar for NoVars {}
+
+pub type VarlessTypeChecker<V> = TypeChecker<V, NoVars>;
+impl<V: Variant> TypeChecker<V, NoVars> {
+    pub fn without_vars() -> VarlessTypeChecker<V> {
+        TypeChecker::new()
+    }
+}
+
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
 impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     /// Creates a new, empty `TypeChecker`.  

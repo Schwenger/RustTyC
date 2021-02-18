@@ -41,7 +41,7 @@ Forget everything that was there before.
 
 * Rename TypeBound -> Bound because what else would it be?
 
-## [0.3.3] - unpublished
+## [0.4.0] - unpublished
 
 ### Fix
 
@@ -53,3 +53,15 @@ Forget everything that was there before.
 * Fix: Check for equality of bounds before reporting a conflict in exact bounds.
 * No longer discard reification errors.
 * Move TcKey management into ConstraintGraph, ditch VertexRef.
+
+### Remove
+
+* Exact type bounds.
+
+### 
+
+* Add more convenient option to create a type checker without variables. 
+
+### Change
+
+* Revised abstract types entirely.
