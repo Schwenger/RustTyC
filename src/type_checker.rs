@@ -1,5 +1,5 @@
+use crate::constraint_graph::ConstraintGraph;
 use crate::types::{Constructable, PreliminaryTypeTable, TypeTable, Variant};
-use crate::{constraint_graph::ConstraintGraph, types::ConstructionErr};
 use crate::{
     keys::{Constraint, TcKey},
     types::Preliminary,
@@ -115,6 +115,7 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     pub fn lift_into(&mut self, variant: V, mut sub_types: Vec<TcKey>) -> TcKey {
         self.lift_partially(variant, sub_types.drain(..).map(Some).collect())
     }
+
     /// Lifts a collection of keys as subset of children into a certain recursive variant.
     pub fn lift_partially(&mut self, variant: V, sub_types: Vec<Option<TcKey>>) -> TcKey {
         self.graph.lift(variant, sub_types)
@@ -137,7 +138,7 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
 
 impl<V, Var: TcVar> TypeChecker<V, Var>
 where
-    V: Variant + Constructable,
+    V: Constructable,
 {
     /// Finalizes the type check procedure.
     /// Calling this function indicates that all relevant information was passed on to the type checker.
@@ -170,5 +171,6 @@ pub enum TcErr<V: Variant> {
         inferred_arity: usize,
         reported_arity: usize,
     },
-    Construction(Preliminary<V>, ConstructionErr),
+    Construction(TcKey, Preliminary<V>, V::Err),
+    ChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
 }

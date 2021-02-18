@@ -114,4 +114,4 @@ pub mod types;
 
 pub use keys::TcKey;
 pub use type_checker::{TcErr, TcVar, TypeChecker};
-pub use types::{Constructable, ConstructionErr, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant};
+pub use types::{Constructable, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant};

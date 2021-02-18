@@ -100,43 +100,15 @@ pub struct Preliminary<V: Variant> {
     pub children: Vec<Option<TcKey>>,
 }
 
-impl<V: Variant> Preliminary<V> {
-    pub(crate) fn top() -> Self {
-        Self { variant: V::top(), children: Vec::new() }
-    }
-}
-
 pub type PreliminaryTypeTable<V> = HashMap<TcKey, Preliminary<V>>;
 pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
 
-/// Indicates that an abstract type could not be reified because it is too general or too restrictive.
-///
-/// # Example
-/// 1. A numeric type cannot be reified into any concrete value because the concrete counterpart could be a natural
-/// number, integer, floating point number, .... -> `ReificationErr::TooGeneral`
-/// 2. An integer type cannot be reified into a concrete type with fixed memory layout except a default size is
-/// defined, e.g. an Int will be reified into an Int32. -> `ReificationErr::TooGeneral`
-/// 3. An unbounded integer might not have a concrete counterpart because the system requires a concrete bit size.
-/// -> `ReificationErr::Conflicting`
-///
-/// Note the subtle difference between `ReificationErr::TooGeneral` and `ReificationErr::Conflicting`:
-///     + In the `Conflicting` case there is no concrete counterpart
-///     + In the `TooGeneral` case the concrete counterpart is not defined or not unique but could exist.
-#[derive(Debug, Clone)]
-pub enum ConstructionErr {
-    /// Attempting to reify an abstract type with either no unique concrete counterpart or with no defined default
-    /// reification value results in this error.
-    TooGeneral(String),
-    /// Attempting to reify an abstract type for which no concrete counterpart does exist results in this error.
-    Conflicting(String),
-}
-
 /// A type implementing this trait can potentially be `reified` into a concrete representation.
 /// This transformation can fail.  If it is infallible, refer to [`Reifiable`](trait.Reifiable.html).
-pub trait Constructable: Sized {
+pub trait Constructable: Variant {
     /// The result type of the attempted reification.
     type Type: Clone + Debug;
     /// Attempts to transform `self` into an more concrete `Self::Reified` type.
     /// Returns a [`ReificationErr`](enum.ReificationErr.html) if the transformation fails.
-    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, ConstructionErr>;
+    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, <Self as Variant>::Err>;
 }
