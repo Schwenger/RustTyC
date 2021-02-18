@@ -1,6 +1,6 @@
 use crate::{
-    type_checker::VarlessTypeChecker, Constructable, ConstructionErr, Partial, PreliminaryTypeTable, TcErr, TcKey,
-    TcVar, TypeChecker, TypeTable, Variant as TcVariant,
+    type_checker::VarlessTypeChecker, Constructable, Partial, PreliminaryTypeTable, TcErr, TcKey, TcVar, TypeChecker,
+    TypeTable, Variant as TcVariant,
 };
 use std::cmp::max;
 use std::convert::TryInto;
@@ -30,7 +30,7 @@ struct Variable(usize);
 impl TcVar for Variable {}
 
 impl TcVariant for Variant {
-    type Err = ();
+    type Err = String;
 
     fn top() -> Self {
         Self::Any
@@ -47,7 +47,7 @@ impl TcVariant for Variant {
             (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) if f == 0 => Ok(Integer(max(i, u))),
             (Fixed(i, f), Integer(u)) | (Integer(u), Fixed(i, f)) => Ok(Fixed(max(i, u), f)),
             (Bool, Bool) => Ok(Bool),
-            (Bool, _) | (_, Bool) => Err(()),
+            (Bool, _) | (_, Bool) => Err("bool can only be combined with bool"),
             (Numeric, Integer(w)) | (Integer(w), Numeric) => Ok(Integer(w)),
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
             (Numeric, Numeric) => Ok(Numeric),
@@ -100,20 +100,18 @@ enum Expression {
 impl Constructable for Variant {
     type Type = Type;
 
-    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, ConstructionErr> {
+    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, Self::Err> {
         assert!(children.is_empty(), "spurious children");
         use Variant::*;
         match self {
-            Any => Err(ConstructionErr::TooGeneral("Cannot reify `Any`.".to_string())),
+            Any => Err("Cannot reify `Any`.".to_string()),
             Integer(w) if *w <= 128 => Ok(Type::Int128),
-            Integer(w) => Err(ConstructionErr::Conflicting(format!("Integer too wide, {}-bit not supported.", w))),
+            Integer(w) => Err(format!("Integer too wide, {}-bit not supported.", w)),
             Fixed(i, f) if *i <= 64 && *f <= 64 => Ok(Type::FixedPointI64F64),
-            Fixed(i, f) => {
-                Err(ConstructionErr::Conflicting(format!("Fixed point number too wide, I{}F{} not supported.", i, f)))
+            Fixed(i, f) => Err(format!("Fixed point number too wide, I{}F{} not supported.", i, f)),
+            Numeric => {
+                Err("Cannot reify a numeric value. Either define a default (int/fixed) or restrict type.".to_string())
             }
-            Numeric => Err(ConstructionErr::TooGeneral(
-                "Cannot reify a numeric value. Either define a default (int/fixed) or restrict type.".to_string(),
-            )),
             Bool => Ok(Type::Bool),
         }
     }
