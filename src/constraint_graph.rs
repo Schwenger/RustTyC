@@ -75,6 +75,7 @@ struct Type<V: Variant> {
 }
 
 type EquateObligation = Vec<(TcKey, TcKey)>;
+type OptEquateObligation = Vec<Option<(TcKey, TcKey)>>;
 impl<V: Variant> Type<V> {
     fn top() -> Self {
         Type { variant: V::top(), children: Vec::new(), upper_bounds: HashSet::new() }
@@ -106,7 +107,31 @@ impl<V: Variant> Type<V> {
         self.upper_bounds.insert(bound);
     }
 
-    fn meet(&self, target_key: TcKey, rhs: &Self) -> Result<(Self, EquateObligation), TcErr<V>> {
+    // Meet-Alternative:
+    // fn meet_alternative(&self, target_key: TcKey, rhs: &Self) -> Result<(Self, EquateObligation), TcErr<V>> {
+    //     trace!("Meeting the variants {:?} and {:?} for {:?},", &self.variant, &rhs.variant, target_key);
+    //     // TODO: Extremely inefficient; improve.
+    //     let lhs = self;
+    //     let left_arity = lhs.children.len();
+    //     let right_arity = rhs.children.len();
+    //     let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
+    //     let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
+    //     let Partial { variant, least_arity } =
+    //         Variant::meet(left, right).map_err(|e| TcErr::Bound(target_key, None, e))?;
+
+    //     let zipped = lhs.children.iter().zip(rhs.children.iter());
+    //     let equates: EquateObligation = zipped.clone().flat_map(|(a, b)| a.zip(*b)).collect();
+    //     let children: Vec<Option<TcKey>> = zipped.map(|(a, b)| a.or(*b)).collect();
+    //     let upper_bounds: HashSet<TcKey> = lhs.upper_bounds.iter().chain(rhs.upper_bounds.iter()).cloned().collect(); // todo: setify
+
+    //     let mut res = Self { variant, children, upper_bounds };
+    //     res.set_arity(target_key, least_arity)?;
+
+    //     trace!("Created {:?}", res);
+    //     Ok((res, equates))
+    // }
+
+    fn meet(&mut self, target_key: TcKey, rhs: &Self) -> Result<EquateObligation, TcErr<V>> {
         trace!("Meeting the variants {:?} and {:?} for {:?},", &self.variant, &rhs.variant, target_key);
         // TODO: Extremely inefficient; improve.
         let lhs = self;
@@ -114,19 +139,21 @@ impl<V: Variant> Type<V> {
         let right_arity = rhs.children.len();
         let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
         let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
-        let Partial { variant, least_arity } =
+        let Partial { variant: new_variant, least_arity } =
             Variant::meet(left, right).map_err(|e| TcErr::Bound(target_key, None, e))?;
 
-        let zipped = lhs.children.iter().zip(rhs.children.iter());
-        let equates: EquateObligation = zipped.clone().flat_map(|(a, b)| a.zip(*b)).collect();
-        let children: Vec<Option<TcKey>> = zipped.map(|(a, b)| a.or(*b)).collect();
-        let upper_bounds: HashSet<TcKey> = lhs.upper_bounds.iter().chain(rhs.upper_bounds.iter()).cloned().collect(); // todo: setify
+        let (mut equates, new_children): (OptEquateObligation, Vec<Option<TcKey>>) =
+            lhs.children.iter().zip(rhs.children.iter()).map(|(a, b)| (a.zip(*b), a.or(*b))).unzip();
 
-        let mut res = Self { variant, children, upper_bounds };
-        res.set_arity(target_key, least_arity)?;
+        let equates: EquateObligation = equates.drain(..).flatten().collect();
 
-        trace!("Created {:?}", res);
-        Ok((res, equates))
+        // commit changes
+        lhs.upper_bounds.extend(rhs.upper_bounds.iter());
+        lhs.variant = new_variant;
+        lhs.children = new_children;
+        lhs.set_arity(target_key, least_arity)?;
+
+        Ok(equates)
     }
 
     fn to_partial(&self) -> Partial<V> {
@@ -235,12 +262,14 @@ impl<T: Variant> ConstraintGraph<T> {
         std::mem::swap(self.vertex_mut(sub), &mut new_fwd);
 
         let sub_v = new_fwd.full(); // We asserted it to be a full vertex.
-        let repr_v = self.repr(repr);
+        let repr_v = self.repr_mut(repr);
+        // Meet-Alternative: let repr_v = self.repr(repr);
 
-        let (new_ty, equates) = repr_v.ty.meet(repr, &sub_v.ty)?;
+        let equates = repr_v.ty.meet(repr, &sub_v.ty)?;
+        // Meet-Alternative: let (new_ty, equates) = repr_v.ty.meet(repr, &sub_v.ty)?;
         equates.into_iter().try_for_each(|(a, b)| self.equate(a, b))?;
 
-        self.repr_mut(repr).ty = new_ty;
+        // Meet-Alternative: self.repr_mut(repr).ty = new_ty;
         Ok(())
     }
 
@@ -337,10 +366,14 @@ impl<T: Variant> ConstraintGraph<T> {
                 let initial: (Type<T>, EquateObligation) = (vertex.ty.clone(), Vec::new());
                 let (new_type, equates) =
                     vertex.ty.upper_bounds.iter().map(|b| &self.repr(*b).ty).fold(Ok(initial), |lhs, rhs| {
-                        let (old_ty, mut equates) = lhs?;
-                        let (new_ty, new_equates) = old_ty.meet(key, rhs)?;
+                        let (mut old_ty, mut equates) = lhs?;
+                        let new_equates = old_ty.meet(key, rhs)?;
+                        // Meet-Alternative:
+                        // let (old_ty, mut equates) = lhs?;
+                        // let (new_ty, new_equates) = old_ty.meet(key, rhs)?;
                         equates.extend(new_equates);
-                        Ok((new_ty, equates))
+                        // Meet-Alternative: Ok((new_ty, equates))
+                        Ok((old_ty, equates))
                     })?;
                 trace!("Incorporating asym data. {:?} became {:?}.", &vertex.ty, &new_type);
                 let change = vertex.ty != new_type;
