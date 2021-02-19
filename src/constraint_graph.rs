@@ -104,7 +104,7 @@ impl<V: Variant> Type<V> {
 
     fn add_upper_bound(&mut self, bound: TcKey) {
         trace!("Adding upper bound {:?} to variant {:?}", bound, &self.variant);
-        self.upper_bounds.insert(bound);
+        let _ = self.upper_bounds.insert(bound);
     }
 
     // Meet-Alternative:
@@ -423,7 +423,7 @@ where
                         v.ty.variant
                             .construct(&children)
                             .map_err(|e| TcErr::Construction(v.this, v.ty.to_preliminary(), e))?;
-                    resolved.insert(v.this, ty);
+                    let _ = resolved.insert(v.this, ty);
                 } else {
                     still_open.push(v)
                 }

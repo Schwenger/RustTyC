@@ -10,27 +10,28 @@ use std::hash::Hash;
 
 /// Represents a re-usable variable in the type checking procedure.  
 ///
-/// [`TcKey`](struct.TcKey.html)s for variables will be managed by the `TypeChecker`.
+/// [TcKey]s for variables will be managed by the [TypeChecker].
 pub trait TcVar: Debug + Eq + Hash + Clone {}
 
-/// The `TypeChecker` is the main interaction point for the type checking procedure.
+/// The [TypeChecker] is the main interaction point for the type checking procedure.
 ///
-/// The `TypeChecker` is the main interaction point for the type checking procedure.
-/// It provides functionality to obtain `TcKeys`, manage variables, impose constraints, and generate a type table.
+/// The [TypeChecker] is the main interaction point for the type checking procedure.
+/// It provides functionality to obtain [TcKey]s, manage variables, impose constraints, and generate a type table.
 ///
 /// # Related Data Structures
-/// * [`TcKey`](struct.TcKey.html) represent different entities during the type checking procedure such as variables or terms.
-/// * [`TcVar`](trait.TcVar.html) represent variables in the external structure, e.g. in the AST that is type checked.
+/// * [TcKey] represent different entities during the type checking procedure such as variables or terms.
+/// * [TcVar] represent variables in the external structure, e.g. in the AST that is type checked.
 /// A variable has exactly one associated key, even if it occurs several times in the external data structure.
 /// The type checker manages keys for variables.
-/// * `Constraint`s represent dependencies between keys and types.  They can only be created using [`TcKey`](struct.TcKey.html).
-/// * [`Variant`](trait.Variant.html) is an external data type that constitutes a potentially unresolved type.
-/// * [`TcErr`](enum.TcErr.html) is a wrapper for `Variant::Err` that contains additional information on what went wrong.
-/// * [`VariantTypeTable`](struct.VariantTypeTable.html) maps keys to Variant types.
+/// * `Constraint`s represent dependencies between keys and types.  They can only be created using [TcKey]s.
+/// * [Variant] is an external data type that constitutes a potentially unresolved type.
+/// * [TcErr] is a wrapper for [Variant::Err] that contains additional information on what went wrong.
+/// * [TypeTable] maps keys to [Constructable::Type] if [Variant] implements [Constructable].
+/// * [PreliminaryTypeTable] maps keys to [Preliminary].  This is only useful if [Variant] does not implement [Constructable]
 ///
 /// # Process
-/// In the first step after creation, the `TypeChecker` generates keys and collects information.  It may already resolve some constraints
-/// and reveal contradictions.  This prompts it to return a negative result with a [`TcErr`](enum.TcErr.html).
+/// In the first step after creation, the [TypeChecker] generates keys and collects information.  It may already resolve some constraints
+/// and reveal contradictions.  This prompts it to return a negative result with a [TcErr].
 /// When all information is collected, it resolves them and generates a type table that contains the least restrictive Variant type for
 /// each registered key.
 ///
@@ -52,14 +53,17 @@ impl<V: Variant, Var: TcVar> Default for TypeChecker<V, Var> {
     }
 }
 
+/// A convenience struct representing non-existant variables during a type check precedure.  Can and should not be accessed, modified, or created.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct NoVars {
     unit: (), // Prevents external creation.
 }
 impl TcVar for NoVars {}
 
+/// A [TypeChecker] instance in case no variables are required.
 pub type VarlessTypeChecker<V> = TypeChecker<V, NoVars>;
 impl<V: Variant> TypeChecker<V, NoVars> {
+    /// Instantiates a new, empty type checker that does not require variables.
     pub fn without_vars() -> VarlessTypeChecker<V> {
         TypeChecker::new()
     }
@@ -67,7 +71,7 @@ impl<V: Variant> TypeChecker<V, NoVars> {
 
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
 impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
-    /// Creates a new, empty `TypeChecker`.  
+    /// Creates a new, empty type checker.  
     pub fn new() -> Self {
         TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new() }
     }
@@ -85,22 +89,22 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
             *tck
         } else {
             let key = self.new_term_key();
-            self.variables.insert(var.clone(), key);
+            let _ = self.variables.insert(var.clone(), key);
             key
         }
     }
 
     /// Provides a key to the `nth` child of the type behind `parent`.
-    /// This imposes the restriction that `parent` resolves to a type that has at least `nth` dependent sub-types.
-    /// If this imposition immediately leads to a contradiction, an [`TcErr`](enum.TcErr.html) is returned.
+    /// This imposes the restriction that `parent` resolves to a type that has at least an arity of `nth`.
+    /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
     pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<V>> {
         self.graph.nth_child(parent, nth)
     }
 
-    /// Imposes a constraint on keys.  They can be obtained by using the associated functions of [`TcKey`](struct.TcKey.html).
-    /// Returns a [`TcErr`](enum.TcErr.html) if the constraint immediately reveals a contradiction.
+    /// Imposes a constraint on keys.  They can be obtained by using the associated functions of [TcKey].
+    /// Returns a [TcErr] if the constraint immediately reveals a contradiction.
     pub fn impose(&mut self, constr: Constraint<V>) -> Result<(), TcErr<V>> {
         match constr {
             Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
@@ -126,11 +130,11 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
         self.graph.all_keys()
     }
 
-    /// Finalizes the type check procedure.
+    /// Finalizes the type check procedure without constructing a full type table.  Refer to [TypeChecker::type_check] if [Variant] implements [Constructable].
     /// Calling this function indicates that all relevant information was passed on to the type checker.
-    /// It will attempt to resolve all constraints and return a type table mapping each registered key to its
-    /// minimally constrained Variant type.
-    /// If any constrained caused a contradiction, it will return a [`TcErr`]: ./TcErr.html containing information about it.
+    /// It will attempt to resolve all constraints and return a type table mapping each registered key to its minimally constrained [Variant]s.
+    /// For recursive types, the respective [Preliminary] provides access to [crate::TcKey]s refering to their children.
+    /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
     pub fn type_check_preliminary(self) -> Result<PreliminaryTypeTable<V>, TcErr<V>> {
         self.graph.solve_preliminary()
     }
@@ -143,8 +147,8 @@ where
     /// Finalizes the type check procedure.
     /// Calling this function indicates that all relevant information was passed on to the type checker.
     /// It will attempt to resolve all constraints and return a type table mapping each registered key to its
-    /// minimally constrained Variant type.
-    /// If any constrained caused a contradiction, it will return a [`TcErr`]: ./TcErr.html containing information about it.
+    /// minimally constrained, constructed type, i.e. [Constructable::Type].  Refer to [TypeChecker::type_check_preliminary()] if [Variant] does not implement [Constructable].
+    /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
     pub fn type_check(self) -> Result<TypeTable<V>, TcErr<V>> {
         self.graph.solve()
     }
@@ -154,23 +158,35 @@ where
 #[derive(Debug, Clone)]
 pub enum TcErr<V: Variant> {
     /// Two keys were attempted to be equated and their underlying types turned out to be incompatible.
-    /// Contains the two keys and the error that occurred when attempting to meet their Variant types.
+    /// Contains the two keys and the error that occurred when attempting to meet their [Variant] types.
     KeyEquation(TcKey, TcKey, V::Err),
     /// An explicit type bound imposed on a key turned out to be incompatible with the type inferred based on
     /// remaining information on the key.  Contains the key and the error that occurred when meeting the explicit
-    /// bound with the inferred type.
+    /// bound with the inferred type variant.
     Bound(TcKey, Option<TcKey>, V::Err),
     /// This error occurs when a constraint accesses the `n`th child of a type and its variant turns out to only
     /// have `k < n` sub-types.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
     ChildAccessOutOfBound(TcKey, V, usize),
+    /// This error occurs if the type checker inferred a specific arity but the variant reports a fixed arity that is lower than the inferred one.
     ArityMismatch {
+        /// The key for which the mismatch was detected.
         key: TcKey,
+        /// The variant with fixed arity.
         variant: V,
+        /// The least required arity according to the type check procedure.
         inferred_arity: usize,
+        /// The arity required according to the meet operation that created the variant.
         reported_arity: usize,
     },
+    /// An error reporting a failed type construction.  Contains the affected key, the preliminary result for which the construction failed, and the
+    /// error reported by the construction.
     Construction(TcKey, Preliminary<V>, V::Err),
+    /// This error indicates that a variant requires children, for one of which the construction failed.
+    /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
+    /// In this case, the construction attempts and might fail to construct a child out of a [Variant::top()].
+    /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
+    /// reported by the construction of the child.
     ChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
 }

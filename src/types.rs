@@ -1,114 +1,103 @@
 //! This mod contains everything related to types and collections of types (type tables).
 //!
 //! # Content
-//! * [`Abstract`](trait.Abstract.html) is a trait representing abstract types that will
-//! be inferred during the type checking procedure.
-//! * Reification is the process of transforming an abstract type into a concrete one.  
-//! This process can be fallible or infallible, represented by [`Reifiable`](trait.Reifiable.html),
-//! [`TryReifiable`](trait.TryReifiable.html), and [`ReificationErr`](enum.ReificationErr.html).
-//! * Generalization is the infallible process of transforming a concrete type into an abstract one represented by [`Generalizable`](trait.Generalizable.html)
-//! * [`TypeTable`](trait.TypeTable.html) contains a mapping from a [`TcKey`](../struct.TcKey.html) to an [`Abstract`](trait.Abstract.html) or reified type.
+//! * [Variant] is a trait representing the variant of an abstract type that will be inferred during the type checking procedure.
+//! * [Constructable]: A variant is constructable if it can be transformed into a concrete type, i.e., [Constructable::Type].
+//! * [TypeTable] and [PreliminaryTypeTable] are mappings from a [TcKey] to a concrete [Constructable::Type] or [Preliminary] type.
 
 use std::{collections::HashMap, fmt::Debug};
 
 use crate::TcKey;
 
-// /// An abstract type that will be inferred during the type checking procedure.
-// ///
-// /// This trait that needs to be implemented by all (rust-) types that represent a type in the type checking procedure.
-// ///
-// /// # Requirements
-// /// The abstract types need to follow a [lattice structure](https://en.wikipedia.org/wiki/Lattice_(order)) where the top element is the least constrained, most abstract type
-// /// possible.
-// /// ## Refinement
-// /// This value needs to be provided by the `Abstract::unconstrained` function.  Types will be refined
-// /// successively using the fallible meet function.  If the types are incompatible, i.e., would result in a contradictory
-// /// type, the meet needs to return a `Result::Err`.  Otherwise, it returns a `Result::Ok` containing the resulting type.
-// /// The function needs to follow the rules for abstract meets.  Intuitively, these are:
-// /// * The result of a meet needs to be more or equally concrete than either argument.
-// /// * Meeting two types returns the greatest upper bound, i.e., the type that is more or equally concrete to either argument _and_ there is no other, less concrete type meeting this requirement.
-// /// This especially entails that meeting any type `T` with an unconstrained type returns `T`.
-// ///
-// /// ## Arity
-// /// Type can be recursive, i.e., they have a number of subtypes, their "children".
-// /// An integer, for example, has no children and is thus 0-ary.  An optional type on the other hand is 1-ary, i.e., it has one sub-type.
-// /// During the inference process, the arity might be undetermined:  the unconstrained type will resolve to something with an arity, but the value is not clear, yet.
-// ///
-// /// The type checking procedure keeps track of types and their potential children.
-// /// For this, it requires some guarantees when it comes to the arity:
-// ///
-// /// ### Arity Stability
-// /// * If a type has a defined arity, it may not change when turning more concrete.  Thus, abstract types with ambiguous arity must not return an arity.
-// /// * A leaf type, i.e., a fully resolved non-contradictory type must provide an arity.
-// /// A consequence is that the meet of two types with different, defined arity will result in an error.
-// ///
-// /// # Example
-// /// For a full example of an abstract type system, refer to the [crate documentation](../index.html) and the examples. TODO: link!
-// ///
-// pub trait Abstract: Eq + Sized + Clone + Debug {
-//     /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
-//     /// May contain information regarding why the meet failed.
-//     type Err: Debug;
+/// A variant that will be inferred during the type checking procedure.
+///
+/// # Requirements
+/// The variant needs to follow a [lattice structure](https://en.wikipedia.org/wiki/Lattice_(order)) where the top element is the least constrained, most abstract type variant
+/// possible.
+/// ## Refinement
+/// The top value needs to be provided by the [Variant::top()] function.  Types will be refined
+/// successively using the fallible [Variant::meet()] function.  If the types are incompatible, i.e., would result in a contradictory
+/// type, the meet needs to return a [Variant::Err]. Note that [Variant::meet()] needs to follow the rules of abstract meets.
+/// Intuitively, these are:
+/// * The result of a meet needs to be more or equally concrete than either argument.
+/// * Meeting two variants returns the greatest upper bound, i.e., the type variant that is more or equally concrete to either argument _and_ there is no other, less concrete type meeting this requirement.
+/// This especially entails that meeting any type `T` with an unconstrained type returns `T`.
+/// The arguments of the meet functions are [Partial], i.e., the combination of a variant and the least number of children the respective type has.
+/// This is of particular interest for types that are not fully resolved and thus do not have a fixed arity, yet.  An unconstained type variant could have
+/// a sub-type because it will be later determined to be an "Option" or "Tuple" type.  More details in the next section.
+///
+/// ## Arity
+/// Type can be recursive, i.e., they have a number of subtypes, their "children".
+/// An integer, for example, has no children and is thus 0-ary.  An optional type on the other hand is 1-ary, tuples might have an arbitrary arity.
+/// During the inference process, the arity might be undetermined:  the unconstrained type will resolve to something with an arity, but the value is not clear, yet.
+/// Hence, its least arity is initially 0 and potentially increases when more information was collected.
+///
+/// The type checking procedure keeps track of types and their potential children.
+/// For this, it requires some guarantees when it comes to the arity:
+///
+/// ### Arity Stability
+/// The meet of two variants must not _reduce_ its arity.  For example, meeting a pair with fixed arity 2 and a triple with fixed arity 3 may not result in a variant with fixed arity 1.
+/// It may, however, result in a variant with variable arity.
+///
+/// # Example
+/// For a full example of an abstract type system, refer to the [crate documentation](../index.html) and the examples.
+///
+pub trait Variant: Sized + Clone + Debug + Eq {
+    /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
+    /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
+    type Err: Debug;
 
-//     /// Returns the unconstrained, most abstract type.
-//     fn unconstrained() -> Self;
+    /// Returns the unconstrained, most abstract type.
+    fn top() -> Self;
 
-//     /// Determines whether or not `self` is the unconstrained type.
-//     fn is_unconstrained(&self) -> bool {
-//         self == &Self::unconstrained()
-//     }
+    /// Determines whether or not `self` is the unconstrained type.
+    fn is_top(&self) -> bool {
+        self == &Self::top()
+    }
 
-//     /// Attempts to meet two abstract types.
-//     /// Refer to the documentation of [Abstract](trait.Abstract.html) for the responsibilities of this function.
-//     fn meet(&self, other: &Self) -> Result<Self, Self::Err>;
+    /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
+    /// Refer to [Variant] for the responsibilities of this function.
+    /// In particular: `usize::max(lhs.least_arity, rhs.least_arity) <= result.least_arity`
+    fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err>;
 
-//     /// Provides the arity of the `self` if the type is sufficiently resolved to determine it.
-//     fn arity(&self) -> Option<usize>;
+    /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
+    /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
+    /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
+    /// the tuple has a variable arity and potentially a different variant.
+    fn fixed_arity(&self) -> bool;
+}
 
-//     /// Provide access to the nth child.
-//     /// # Guarantee
-//     /// The arity of `self` is defined and greater or equal to `n`: `assert!(self.arity.map(|a| *a >= n).unwrap_or(false)`
-//     fn nth_child(&self, n: usize) -> &Self;
-
-//     /// Generate an instance of Self that is equivalent to `self` except that the children of the newly generated type will be
-//     /// `children`.
-//     /// # Guarantee
-//     /// The arity of `self` is defined and corresponds to the number of element in `children`: assert!(self.arity.map(|a| a == children.collect::<Vec<Self>>().len()).unwrap_or(false))`
-//     fn with_children<I>(&self, children: I) -> Self
-//     where
-//         I: IntoIterator<Item = Self>;
-// }
-
+/// Partial is a container for a [Variant] and the least arity a particular instance of this variant currently has. Only used for [Variant::meet()].
+///
+/// The `least_arity` indicates how many children this instance of the variance has according to the current state of the type checker.
+/// The value might increase in the future but never decrease.
 #[derive(Debug, Clone)]
 pub struct Partial<V: Variant> {
+    /// The variant represented by this `Partial`.
     pub variant: V,
+    ///The least number of children the variant will have after completing the type check.
     pub least_arity: usize,
 }
 
-pub trait Variant: Sized + Clone + Debug + Eq {
-    // type Type: Debug + Clone; // Concrete type
-    type Err: Debug;
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err>;
-    fn fixed_arity(&self) -> bool;
-    // fn try_construct(&self, children: &[Self::Type]) -> Result<Self::Type, Self::Err>;
-    fn top() -> Self;
-}
-
+/// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].
 #[derive(Debug, Clone)]
 pub struct Preliminary<V: Variant> {
+    /// The type variant of the entity represented by this `Preliminary`.
     pub variant: V,
+    /// The [TcKey]s of the children of this variant.
     pub children: Vec<Option<TcKey>>,
 }
 
+/// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [Variant] does not implement [Constructable].
 pub type PreliminaryTypeTable<V> = HashMap<TcKey, Preliminary<V>>;
+/// A type table containing the constructed type of the inferred [Variant] for each [TcKey].  Requires [Variant] to implement [Constructable].
 pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
 
-/// A type implementing this trait can potentially be `reified` into a concrete representation.
-/// This transformation can fail.  If it is infallible, refer to [`Reifiable`](trait.Reifiable.html).
+/// A type implementing this trait can potentially be transformed into a concrete representation. This transformation can fail.
 pub trait Constructable: Variant {
-    /// The result type of the attempted reification.
+    /// The result type of the attempted construction.
     type Type: Clone + Debug;
-    /// Attempts to transform `self` into an more concrete `Self::Reified` type.
-    /// Returns a [`ReificationErr`](enum.ReificationErr.html) if the transformation fails.
+    /// Attempts to transform `self` into an more concrete `Self::Type`.
+    /// Returns a [Variant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
     fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, <Self as Variant>::Err>;
 }

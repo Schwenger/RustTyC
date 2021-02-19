@@ -204,7 +204,6 @@ fn _tc_expr(tc: &mut VarlessTypeChecker<Variant>, expr: &Expression) -> Result<T
             // would copy the keys rather than creating new ones.
             let params: Vec<(Option<Variant>, TcKey)> =
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
-            &params;
             for (arg_ty, arg_expr) in args {
                 let arg_key = _tc_expr(tc, arg_expr)?;
                 match arg_ty {
