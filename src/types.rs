@@ -77,6 +77,15 @@ pub enum Arity {
     Fixed(usize),
 }
 
+impl Arity {
+    pub(crate) fn to_opt(self) -> Option<usize> {
+        match self {
+            Arity::Variable => None,
+            Arity::Fixed(n) => Some(n),
+        }
+    }
+}
+
 /// Partial is a container for a [Variant] and the least arity a particular instance of this variant currently has. Only used for [Variant::meet()].
 ///
 /// The `least_arity` indicates how many children this instance of the variance has according to the current state of the type checker.
