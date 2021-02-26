@@ -411,15 +411,17 @@ where
         let mut open: Vec<&FullVertex<V>> = self.reprs().collect();
         loop {
             let mut still_open = Vec::with_capacity(open.len());
+            // println!("Resolved: {:?}", resolved);
+            // println!("Open: {:?}", open.iter().map(|d| d.this).collect::<Vec<TcKey>>());
             let num_open = open.len();
             for v in open {
-                let children: Option<Vec<V::Type>> =
+                let children =
                     v.ty.children
                         .iter()
                         .enumerate()
                         .map(|(ix, c)| {
                             if let Some(key) = c {
-                                Ok(resolved.get(key).cloned())
+                                Ok(resolved.get(&self.repr(*key).this).cloned())
                             } else {
                                 V::construct(&V::top(), &Vec::new())
                                     .map(Some)
@@ -428,7 +430,6 @@ where
                         })
                         .collect::<Result<Option<Vec<V::Type>>, TcErr<V>>>()?;
                 if let Some(children) = children {
-                    // let children = children.into_iter().cloned().collect::<Vec<V::Type>>();
                     let ty =
                         v.ty.variant
                             .construct(&children)

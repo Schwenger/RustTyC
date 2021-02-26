@@ -14,4 +14,3 @@ categories = ["parsing"]
 name = "parametrized_function"
 
 [dependencies]
-log = "0.4.14"
