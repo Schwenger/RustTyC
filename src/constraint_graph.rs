@@ -293,7 +293,8 @@ impl<T: Variant> ConstraintGraph<T> {
     fn add_explicit_bound(&mut self, target: TcKey, bound: T) -> Result<(), TcErr<T>> {
         let target_v = self.repr_mut(target);
         let lhs = target_v.ty.to_partial();
-        let rhs = Partial { variant: bound, least_arity: target_v.ty.children.len() };
+        let rhs_arity = bound.arity().to_opt().unwrap_or(0);
+        let rhs = Partial { variant: bound, least_arity: rhs_arity };
         let meet = T::meet(lhs, rhs).map_err(|e| TcErr::Bound(target, None, e))?;
         target_v.ty.with_partial(target, meet)
     }
