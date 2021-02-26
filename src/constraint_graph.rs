@@ -386,9 +386,10 @@ impl<T: Variant> ConstraintGraph<T> {
                 let vertex = self.repr(key);
                 let initial: (Type<T>, EquateObligation) = (vertex.ty.clone(), Vec::new());
                 let (new_type, equates) =
-                    vertex.ty.upper_bounds.iter().map(|b| &self.repr(*b).ty).fold(Ok(initial), |lhs, rhs| {
+                    vertex.ty.upper_bounds.iter().map(|b| (&self.repr(*b).ty, *b)).fold(Ok(initial), |lhs, rhs| {
                         let (mut old_ty, mut equates) = lhs?;
-                        let new_equates = old_ty.meet(key, rhs)?;
+                        let (rhs, partner_key) = rhs;
+                        let new_equates = old_ty.meet(key, partner_key, rhs)?;
                         // Meet-Alternative:
                         // let (old_ty, mut equates) = lhs?;
                         // let (new_ty, new_equates) = old_ty.meet(key, rhs)?;
