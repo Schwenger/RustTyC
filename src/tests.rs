@@ -1,6 +1,6 @@
 use crate::{
-    type_checker::VarlessTypeChecker, Constructable, Partial, PreliminaryTypeTable, TcErr, TcKey, TcVar, TypeChecker,
-    TypeTable, Variant as TcVariant,
+    type_checker::VarlessTypeChecker, types::Arity, Constructable, Partial, PreliminaryTypeTable, TcErr, TcKey, TcVar,
+    TypeChecker, TypeTable, Variant as TcVariant,
 };
 use std::cmp::max;
 use std::convert::TryInto;
@@ -55,8 +55,8 @@ impl TcVariant for Variant {
         Ok(Partial { variant, least_arity: 0 })
     }
 
-    fn fixed_arity(&self) -> bool {
-        true
+    fn arity(&self) -> Arity {
+        Arity::Fixed(0)
     }
 }
 

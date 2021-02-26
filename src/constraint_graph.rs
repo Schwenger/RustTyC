@@ -1,6 +1,5 @@
 use crate::{
-    types::Partial,
-    types::{Constructable, Preliminary, PreliminaryTypeTable, TypeTable, Variant},
+    types::{Arity, Constructable, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant},
     TcErr, TcKey,
 };
 use std::collections::{HashMap, HashSet};
@@ -81,13 +80,20 @@ impl<V: Variant> Type<V> {
         Type { variant: V::top(), children: Vec::new(), upper_bounds: HashSet::new() }
     }
 
-    fn set_arity(&mut self, this: TcKey, n: usize) -> Result<(), TcErr<V>> {
+    fn set_arity_checked(&mut self, this: TcKey, n: usize) -> Result<(), TcErr<V>> {
         trace!("Setting arity of {:?} to {}", this, n);
-        if n > self.children.len() && self.variant.fixed_arity() {
-            return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), n));
+        match self.variant.arity() {
+            Arity::Fixed(arity) if n > arity => {
+                return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), n))
+            }
+            Arity::Fixed(arity) => ConstraintGraph::<V>::fill_with(&mut self.children, None, arity),
+            Arity::Variable => ConstraintGraph::<V>::fill_with(&mut self.children, None, n),
         }
-        ConstraintGraph::<V>::fill_with(&mut self.children, None, n);
         Ok(())
+    }
+
+    fn set_arity_unchecked(&mut self, n: usize) {
+        ConstraintGraph::<V>::fill_with(&mut self.children, None, n);
     }
 
     fn child(&self, n: usize) -> Option<TcKey> {
@@ -131,7 +137,7 @@ impl<V: Variant> Type<V> {
     //     Ok((res, equates))
     // }
 
-    fn meet(&mut self, target_key: TcKey, rhs: &Self) -> Result<EquateObligation, TcErr<V>> {
+    fn meet(&mut self, this: TcKey, target_key: TcKey, rhs: &Self) -> Result<EquateObligation, TcErr<V>> {
         trace!("Meeting the variants {:?} and {:?} for {:?},", &self.variant, &rhs.variant, target_key);
         // TODO: Extremely inefficient; improve.
         let lhs = self;
@@ -140,7 +146,7 @@ impl<V: Variant> Type<V> {
         let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
         let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
         let Partial { variant: new_variant, least_arity } =
-            Variant::meet(left, right).map_err(|e| TcErr::Bound(target_key, None, e))?;
+            Variant::meet(left, right).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
 
         let (mut equates, new_children): (OptEquateObligation, Vec<Option<TcKey>>) =
             lhs.children.iter().zip(rhs.children.iter()).map(|(a, b)| (a.zip(*b), a.or(*b))).unzip();
@@ -151,7 +157,7 @@ impl<V: Variant> Type<V> {
         lhs.upper_bounds.extend(rhs.upper_bounds.iter());
         lhs.variant = new_variant;
         lhs.children = new_children;
-        lhs.set_arity(target_key, least_arity)?;
+        lhs.set_arity_checked(target_key, least_arity)?;
 
         Ok(equates)
     }
@@ -163,17 +169,32 @@ impl<V: Variant> Type<V> {
     fn with_partial(&mut self, this: TcKey, p: Partial<V>) -> Result<(), TcErr<V>> {
         trace!("Incorporating partial {:?} into {:?} with variant {:?}", &p, this, &self.variant);
         let Partial { variant, least_arity } = p;
-        if self.children.len() > least_arity && variant.fixed_arity() {
-            return Err(TcErr::ArityMismatch {
-                key: this,
-                variant,
-                inferred_arity: self.children.len(),
-                reported_arity: least_arity,
-            });
+        match variant.arity() {
+            Arity::Variable => {
+                self.variant = variant;
+                trace!("Is now variant {:?}.", &self.variant);
+                self.set_arity_unchecked(least_arity); // set_arity increases or is no-op.
+                Ok(())
+            }
+            Arity::Fixed(arity) => {
+                assert_eq!(
+                    arity, least_arity,
+                    "meet of two variants yielded fixed-arity variant that did not match least arity."
+                );
+                if self.children.len() > arity {
+                    return Err(TcErr::ArityMismatch {
+                        key: this,
+                        variant,
+                        inferred_arity: self.children.len(),
+                        reported_arity: least_arity,
+                    });
+                }
+                self.variant = variant;
+                trace!("Is now variant {:?}.", &self.variant);
+                self.set_arity_unchecked(least_arity); // set_arity increases or is no-op.
+                Ok(())
+            }
         }
-        self.variant = variant;
-        trace!("Is now variant {:?}.", &self.variant);
-        self.set_arity(this, least_arity)
     }
 
     fn to_preliminary(&self) -> Preliminary<V> {
@@ -218,7 +239,7 @@ impl<T: Variant> ConstraintGraph<T> {
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
     pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize) -> Result<TcKey, TcErr<T>> {
         let parent_v = self.repr_mut(parent);
-        parent_v.ty.set_arity(parent, n)?;
+        parent_v.ty.set_arity_checked(parent, n)?;
         let nth_child = parent_v.ty.child(n);
         if let Some(child) = nth_child {
             return Ok(child);
@@ -265,7 +286,7 @@ impl<T: Variant> ConstraintGraph<T> {
         let repr_v = self.repr_mut(repr);
         // Meet-Alternative: let repr_v = self.repr(repr);
 
-        let equates = repr_v.ty.meet(repr, &sub_v.ty)?;
+        let equates = repr_v.ty.meet(repr, sub, &sub_v.ty)?;
         // Meet-Alternative: let (new_ty, equates) = repr_v.ty.meet(repr, &sub_v.ty)?;
         equates.into_iter().try_for_each(|(a, b)| self.equate(a, b))?;
 

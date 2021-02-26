@@ -46,7 +46,7 @@ pub enum Constraint<V: Variant> {
 /// There are several kinds of constraints that can be generated for a key.
 /// Assume the following data structures exist:
 /// ```
-/// use rusttyc::{Variant, TcKey, TypeChecker, TcVar, TcErr, Partial};
+/// use rusttyc::{Variant, TcKey, TypeChecker, TcVar, TcErr, Partial, Arity};
 ///
 /// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// enum MyVariant {
@@ -74,8 +74,8 @@ pub enum Constraint<V: Variant> {
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
-///     fn fixed_arity(&self) -> bool {
-///         false
+///     fn arity(&self) -> Arity {
+///         Arity::Fixed(0)
 ///     }
 /// }
 /// #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -85,7 +85,7 @@ pub enum Constraint<V: Variant> {
 ///
 /// The type checking procedure can then proceed as follows.
 /// ```
-/// # use rusttyc::{Variant, TcKey, TypeChecker, TcVar, TcErr, Partial};
+/// # use rusttyc::{Variant, TcKey, TypeChecker, TcVar, TcErr, Partial, Arity};
 /// #
 /// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// enum MyVariant {
@@ -113,8 +113,8 @@ pub enum Constraint<V: Variant> {
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
-///     fn fixed_arity(&self) -> bool {
-///         false
+///     fn arity(&self) -> Arity {
+///         Arity::Fixed(0)
 ///     }
 /// }
 /// #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]

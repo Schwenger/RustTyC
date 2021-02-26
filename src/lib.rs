@@ -33,11 +33,11 @@
 //! #     Boolean,
 //! #     Top,
 //! # }
-//! # use rusttyc::{TcVar, TypeChecker, Variant, TcErr, Partial};
+//! # use rusttyc::{TcVar, TypeChecker, Variant, TcErr, Partial, Arity};
 //! type MyTypeErr = String;
 //! impl Variant for MyVariant {
 //!     type Err = MyTypeErr;
-//!     fn fixed_arity(&self) -> bool { false }
+//!     fn arity(&self) -> Arity { Arity::Fixed(0) }
 //!     fn top() -> Self { MyVariant::Top }
 //!     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
 //!         assert_eq!(lhs.least_arity, 0);
@@ -100,4 +100,4 @@ pub mod types;
 
 pub use keys::TcKey;
 pub use type_checker::{TcErr, TcVar, TypeChecker, VarlessTypeChecker};
-pub use types::{Constructable, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant};
+pub use types::{Arity, Constructable, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant};

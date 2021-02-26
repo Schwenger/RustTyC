@@ -1,4 +1,6 @@
-use rusttyc::{Constructable, Partial, TcErr, TcKey, TcVar, TypeChecker, Variant as TcVariant, VarlessTypeChecker};
+use rusttyc::{
+    types::Arity, Constructable, Partial, TcErr, TcKey, TcVar, TypeChecker, Variant as TcVariant, VarlessTypeChecker,
+};
 use std::cmp::max;
 use std::convert::TryInto;
 use std::hash::Hash;
@@ -52,8 +54,8 @@ impl TcVariant for Variant {
         Ok(Partial { variant, least_arity: 0 })
     }
 
-    fn fixed_arity(&self) -> bool {
-        true
+    fn arity(&self) -> Arity {
+        Arity::Fixed(0)
     }
 }
 

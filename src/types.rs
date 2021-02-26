@@ -58,13 +58,23 @@ pub trait Variant: Sized + Clone + Debug + Eq {
     /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
     /// Refer to [Variant] for the responsibilities of this function.
     /// In particular: `usize::max(lhs.least_arity, rhs.least_arity) <= result.least_arity`
+    /// In the successful case, the variant and arity of the partial have to match, i.e., if the [Arity]
+    /// is fixed with value `n`, then [Partial::least_arity] needs to be `n` as well.
     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err>;
 
     /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
     /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
     /// the tuple has a variable arity and potentially a different variant.
-    fn fixed_arity(&self) -> bool;
+    fn arity(&self) -> Arity;
+}
+/// Represents the arity of a [Variant].
+#[derive(Debug, Clone, Copy)]
+pub enum Arity {
+    /// The arity is variable, i.e., it does not have a specific value.
+    Variable,
+    /// The arity has a fixed value.
+    Fixed(usize),
 }
 
 /// Partial is a container for a [Variant] and the least arity a particular instance of this variant currently has. Only used for [Variant::meet()].
