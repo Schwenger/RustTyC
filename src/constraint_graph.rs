@@ -130,24 +130,38 @@ impl<V: Variant> Type<V> {
         let lhs = self;
         let left_arity = lhs.children.len();
         let right_arity = rhs.children.len();
+
         debug_assert!(lhs.variant.arity().to_opt().map(|a| a == left_arity).unwrap_or(true));
         debug_assert!(rhs.variant.arity().to_opt().map(|a| a == right_arity).unwrap_or(true));
+
+        // println!("Meeting {:?} and {:?}.", lhs, rhs);
 
         let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
         let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
         let Partial { variant: new_variant, least_arity } =
             Variant::meet(left, right).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
 
-        let (mut equates, new_children): (OptEquateObligation, Vec<Option<TcKey>>) =
-            lhs.children.iter().zip(rhs.children.iter()).map(|(a, b)| (a.zip(*b), a.or(*b))).unzip();
+        let mut rhs_children = rhs.children.clone();
+        // Make child arrays same length.
+        ConstraintGraph::<V>::fill_with(&mut lhs.children, None, right_arity); // Will be checked later.
+        ConstraintGraph::<V>::fill_with(&mut rhs_children, None, left_arity); // Just a copy.
+
+        let (mut equates, new_children): (OptEquateObligation, Vec<Option<TcKey>>) = lhs
+            .children
+            .iter()
+            .zip(rhs.children.iter().chain(std::iter::repeat(&None)))
+            .map(|(a, b)| (a.zip(*b), a.or(*b)))
+            .unzip();
 
         let equates: EquateObligation = equates.drain(..).flatten().collect();
 
         // commit changes
-        lhs.upper_bounds.extend(rhs.upper_bounds.iter());
         lhs.variant = new_variant;
         lhs.children = new_children;
+        lhs.upper_bounds.extend(rhs.upper_bounds.iter());
         lhs.set_arity_checked(target_key, least_arity)?;
+
+        // println!("Result: {:?}", lhs);
 
         debug_assert!(lhs.variant.arity().to_opt().map(|a| a == lhs.children.len()).unwrap_or(true));
 
