@@ -1,0 +1,250 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/types.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>types.rs - source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../rusttyc/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><span class="help-button">?</span>
+                <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
+<span id="2">  2</span>
+<span id="3">  3</span>
+<span id="4">  4</span>
+<span id="5">  5</span>
+<span id="6">  6</span>
+<span id="7">  7</span>
+<span id="8">  8</span>
+<span id="9">  9</span>
+<span id="10"> 10</span>
+<span id="11"> 11</span>
+<span id="12"> 12</span>
+<span id="13"> 13</span>
+<span id="14"> 14</span>
+<span id="15"> 15</span>
+<span id="16"> 16</span>
+<span id="17"> 17</span>
+<span id="18"> 18</span>
+<span id="19"> 19</span>
+<span id="20"> 20</span>
+<span id="21"> 21</span>
+<span id="22"> 22</span>
+<span id="23"> 23</span>
+<span id="24"> 24</span>
+<span id="25"> 25</span>
+<span id="26"> 26</span>
+<span id="27"> 27</span>
+<span id="28"> 28</span>
+<span id="29"> 29</span>
+<span id="30"> 30</span>
+<span id="31"> 31</span>
+<span id="32"> 32</span>
+<span id="33"> 33</span>
+<span id="34"> 34</span>
+<span id="35"> 35</span>
+<span id="36"> 36</span>
+<span id="37"> 37</span>
+<span id="38"> 38</span>
+<span id="39"> 39</span>
+<span id="40"> 40</span>
+<span id="41"> 41</span>
+<span id="42"> 42</span>
+<span id="43"> 43</span>
+<span id="44"> 44</span>
+<span id="45"> 45</span>
+<span id="46"> 46</span>
+<span id="47"> 47</span>
+<span id="48"> 48</span>
+<span id="49"> 49</span>
+<span id="50"> 50</span>
+<span id="51"> 51</span>
+<span id="52"> 52</span>
+<span id="53"> 53</span>
+<span id="54"> 54</span>
+<span id="55"> 55</span>
+<span id="56"> 56</span>
+<span id="57"> 57</span>
+<span id="58"> 58</span>
+<span id="59"> 59</span>
+<span id="60"> 60</span>
+<span id="61"> 61</span>
+<span id="62"> 62</span>
+<span id="63"> 63</span>
+<span id="64"> 64</span>
+<span id="65"> 65</span>
+<span id="66"> 66</span>
+<span id="67"> 67</span>
+<span id="68"> 68</span>
+<span id="69"> 69</span>
+<span id="70"> 70</span>
+<span id="71"> 71</span>
+<span id="72"> 72</span>
+<span id="73"> 73</span>
+<span id="74"> 74</span>
+<span id="75"> 75</span>
+<span id="76"> 76</span>
+<span id="77"> 77</span>
+<span id="78"> 78</span>
+<span id="79"> 79</span>
+<span id="80"> 80</span>
+<span id="81"> 81</span>
+<span id="82"> 82</span>
+<span id="83"> 83</span>
+<span id="84"> 84</span>
+<span id="85"> 85</span>
+<span id="86"> 86</span>
+<span id="87"> 87</span>
+<span id="88"> 88</span>
+<span id="89"> 89</span>
+<span id="90"> 90</span>
+<span id="91"> 91</span>
+<span id="92"> 92</span>
+<span id="93"> 93</span>
+<span id="94"> 94</span>
+<span id="95"> 95</span>
+<span id="96"> 96</span>
+<span id="97"> 97</span>
+<span id="98"> 98</span>
+<span id="99"> 99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+</pre><div class="example-wrap"><pre class="rust ">
+<span class="doccomment">//! This mod contains everything related to types and collections of types (type tables).</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! # Content</span>
+<span class="doccomment">//! * [Variant] is a trait representing the variant of an abstract type that will be inferred during the type checking procedure.</span>
+<span class="doccomment">//! * [Constructable]: A variant is constructable if it can be transformed into a concrete type, i.e., [Constructable::Type].</span>
+<span class="doccomment">//! * [TypeTable] and [PreliminaryTypeTable] are mappings from a [TcKey] to a concrete [Constructable::Type] or [Preliminary] type.</span>
+
+<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">collections</span>::<span class="ident">HashMap</span>, <span class="ident">fmt</span>::<span class="ident">Debug</span>};
+
+<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">TcKey</span>;
+
+<span class="doccomment">/// A variant that will be inferred during the type checking procedure.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// # Requirements</span>
+<span class="doccomment">/// The variant needs to follow a [lattice structure](https://en.wikipedia.org/wiki/Lattice_(order)) where the top element is the least constrained, most abstract type variant</span>
+<span class="doccomment">/// possible.</span>
+<span class="doccomment">/// ## Refinement</span>
+<span class="doccomment">/// The top value needs to be provided by the [Variant::top()] function.  Types will be refined</span>
+<span class="doccomment">/// successively using the fallible [Variant::meet()] function.  If the types are incompatible, i.e., would result in a contradictory</span>
+<span class="doccomment">/// type, the meet needs to return a [Variant::Err]. Note that [Variant::meet()] needs to follow the rules of abstract meets.</span>
+<span class="doccomment">/// Intuitively, these are:</span>
+<span class="doccomment">/// * The result of a meet needs to be more or equally concrete than either argument.</span>
+<span class="doccomment">/// * Meeting two variants returns the greatest upper bound, i.e., the type variant that is more or equally concrete to either argument _and_ there is no other, less concrete type meeting this requirement.</span>
+<span class="doccomment">/// This especially entails that meeting any type `T` with an unconstrained type returns `T`.</span>
+<span class="doccomment">/// The arguments of the meet functions are [Partial], i.e., the combination of a variant and the least number of children the respective type has.</span>
+<span class="doccomment">/// This is of particular interest for types that are not fully resolved and thus do not have a fixed arity, yet.  An unconstained type variant could have</span>
+<span class="doccomment">/// a sub-type because it will be later determined to be an &quot;Option&quot; or &quot;Tuple&quot; type.  More details in the next section.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// ## Arity</span>
+<span class="doccomment">/// Type can be recursive, i.e., they have a number of subtypes, their &quot;children&quot;.</span>
+<span class="doccomment">/// An integer, for example, has no children and is thus 0-ary.  An optional type on the other hand is 1-ary, tuples might have an arbitrary arity.</span>
+<span class="doccomment">/// During the inference process, the arity might be undetermined:  the unconstrained type will resolve to something with an arity, but the value is not clear, yet.</span>
+<span class="doccomment">/// Hence, its least arity is initially 0 and potentially increases when more information was collected.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// The type checking procedure keeps track of types and their potential children.</span>
+<span class="doccomment">/// For this, it requires some guarantees when it comes to the arity:</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// ### Arity Stability</span>
+<span class="doccomment">/// The meet of two variants must not _reduce_ its arity.  For example, meeting a pair with fixed arity 2 and a triple with fixed arity 3 may not result in a variant with fixed arity 1.</span>
+<span class="doccomment">/// It may, however, result in a variant with variable arity.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// # Example</span>
+<span class="doccomment">/// For a full example of an abstract type system, refer to the [crate documentation](../index.html) and the examples.</span>
+<span class="doccomment">///</span>
+<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">Variant</span>: <span class="ident">Sized</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Debug</span> <span class="op">+</span> <span class="ident">Eq</span> {
+    <span class="doccomment">/// Result of a meet of two incompatible type, i.e., it represents a type contradiction.</span>
+    <span class="doccomment">/// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.</span>
+    <span class="kw">type</span> <span class="prelude-val">Err</span>: <span class="ident">Debug</span>;
+
+    <span class="doccomment">/// Returns the unconstrained, most abstract type.</span>
+    <span class="kw">fn</span> <span class="ident">top</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span>;
+
+    <span class="doccomment">/// Determines whether or not `self` is the unconstrained type.</span>
+    <span class="kw">fn</span> <span class="ident">is_top</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
+        <span class="self">self</span> <span class="op">=</span><span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">Self</span>::<span class="ident">top</span>()
+    }
+
+    <span class="doccomment">/// Attempts to meet two variants respecting their currently-determined potentially variable arity.</span>
+    <span class="doccomment">/// Refer to [Variant] for the responsibilities of this function.</span>
+    <span class="doccomment">/// In particular: `usize::max(lhs.least_arity, rhs.least_arity) &lt;= result.least_arity`</span>
+    <span class="doccomment">/// In the successful case, the variant and arity of the partial have to match, i.e., if the [Arity]</span>
+    <span class="doccomment">/// is fixed with value `n`, then [Partial::least_arity] needs to be `n` as well.</span>
+    <span class="kw">fn</span> <span class="ident">meet</span>(<span class="ident">lhs</span>: <span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="ident">rhs</span>: <span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="self">Self</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span>;
+
+    <span class="doccomment">/// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.</span>
+    <span class="doccomment">/// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.</span>
+    <span class="doccomment">/// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,</span>
+    <span class="doccomment">/// the tuple has a variable arity and potentially a different variant.</span>
+    <span class="kw">fn</span> <span class="ident">arity</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Arity</span>;
+}
+<span class="doccomment">/// Represents the arity of a [Variant].</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Copy</span>)]</span>
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Arity</span> {
+    <span class="doccomment">/// The arity is variable, i.e., it does not have a specific value.</span>
+    <span class="ident">Variable</span>,
+    <span class="doccomment">/// The arity has a fixed value.</span>
+    <span class="ident">Fixed</span>(<span class="ident">usize</span>),
+}
+
+<span class="kw">impl</span> <span class="ident">Arity</span> {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">to_opt</span>(<span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> {
+        <span class="kw">match</span> <span class="self">self</span> {
+            <span class="ident">Arity</span>::<span class="ident">Variable</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
+            <span class="ident">Arity</span>::<span class="ident">Fixed</span>(<span class="ident">n</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Some</span>(<span class="ident">n</span>),
+        }
+    }
+}
+
+<span class="doccomment">/// Partial is a container for a [Variant] and the least arity a particular instance of this variant currently has. Only used for [Variant::meet()].</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// The `least_arity` indicates how many children this instance of the variance has according to the current state of the type checker.</span>
+<span class="doccomment">/// The value might increase in the future but never decrease.</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Partial</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Variant</span><span class="op">&gt;</span> {
+    <span class="doccomment">/// The variant represented by this `Partial`.</span>
+    <span class="kw">pub</span> <span class="ident">variant</span>: <span class="ident">V</span>,
+    <span class="doccomment">///The least number of children the variant will have after completing the type check.</span>
+    <span class="kw">pub</span> <span class="ident">least_arity</span>: <span class="ident">usize</span>,
+}
+
+<span class="doccomment">/// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Preliminary</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Variant</span><span class="op">&gt;</span> {
+    <span class="doccomment">/// The type variant of the entity represented by this `Preliminary`.</span>
+    <span class="kw">pub</span> <span class="ident">variant</span>: <span class="ident">V</span>,
+    <span class="doccomment">/// The [TcKey]s of the children of this variant.</span>
+    <span class="kw">pub</span> <span class="ident">children</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">TcKey</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+}
+
+<span class="doccomment">/// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [Variant] does not implement [Constructable].</span>
+<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">PreliminaryTypeTable</span><span class="op">&lt;</span><span class="ident">V</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">TcKey</span>, <span class="ident">Preliminary</span><span class="op">&lt;</span><span class="ident">V</span><span class="op">&gt;</span><span class="op">&gt;</span>;
+<span class="doccomment">/// A type table containing the constructed type of the inferred [Variant] for each [TcKey].  Requires [Variant] to implement [Constructable].</span>
+<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">TypeTable</span><span class="op">&lt;</span><span class="ident">V</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">TcKey</span>, <span class="op">&lt;</span><span class="ident">V</span> <span class="kw">as</span> <span class="ident">Constructable</span><span class="op">&gt;</span>::<span class="ident">Type</span><span class="op">&gt;</span>;
+
+<span class="doccomment">/// A type implementing this trait can potentially be transformed into a concrete representation. This transformation can fail.</span>
+<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">Constructable</span>: <span class="ident">Variant</span> {
+    <span class="doccomment">/// The result type of the attempted construction.</span>
+    <span class="kw">type</span> <span class="ident">Type</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Debug</span>;
+    <span class="doccomment">/// Attempts to transform `self` into an more concrete `Self::Type`.</span>
+    <span class="doccomment">/// Returns a [Variant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.</span>
+    <span class="kw">fn</span> <span class="ident">construct</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">children</span>: <span class="kw-2">&amp;</span>[<span class="self">Self</span>::<span class="ident">Type</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>::<span class="ident">Type</span>, <span class="op">&lt;</span><span class="self">Self</span> <span class="kw">as</span> <span class="ident">Variant</span><span class="op">&gt;</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span>;
+}
+</pre></div>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>
