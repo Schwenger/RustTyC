@@ -1,7 +1,7 @@
 [package]
 name = "rusttyc"
-version = "0.3.2"
-authors = ["Maximilian Schwenger <maximilian.schwenger@cispa.saarland>"]
+version = "0.4.0"
+authors = ["Maximilian Schwenger <maximilian.schwenger@cispa.de>"]
 edition = "2018"
 license = "MIT"
 description = "A library for writing type checkers with a lattice-like type system in rust."
@@ -12,5 +12,3 @@ categories = ["parsing"]
 
 [[example]]
 name = "parametrized_function"
-
-[dependencies]

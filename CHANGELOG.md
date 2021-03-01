@@ -41,7 +41,7 @@ Forget everything that was there before.
 
 * Rename TypeBound -> Bound because what else would it be?
 
-## [0.4.0] - unpublished
+## [0.4.0] - 01.03.2021
 
 ### Fix
 
@@ -59,9 +59,9 @@ Forget everything that was there before.
 * Exact type bounds.
 * Bounding TcKeys by concrete types.
 
-### 
+### Add
 
-* Add more convenient option to create a type checker without variables. 
+* More convenient option to create a type checker without variables. 
 
 ### Change
 
