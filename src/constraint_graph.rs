@@ -74,19 +74,19 @@ impl<V: Variant> Type<V> {
         Type { variant: V::top(), children: Vec::new(), upper_bounds: HashSet::new() }
     }
 
-    fn set_arity_checked(&mut self, this: TcKey, n: usize) -> Result<(), TcErr<V>> {
+    fn set_arity_checked(&mut self, this: TcKey, new_arity: usize) -> Result<(), TcErr<V>> {
         match self.variant.arity() {
-            Arity::Fixed(arity) if n >= arity => {
-                return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), n))
+            Arity::Fixed(given_arity) if new_arity > given_arity => {
+                return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity))
             }
-            Arity::Fixed(arity) => ConstraintGraph::<V>::fill_with(&mut self.children, None, arity),
-            Arity::Variable => ConstraintGraph::<V>::fill_with(&mut self.children, None, n),
+            Arity::Fixed(given_arity) => ConstraintGraph::<V>::fill_with(&mut self.children, None, given_arity),
+            Arity::Variable => ConstraintGraph::<V>::fill_with(&mut self.children, None, new_arity),
         }
         Ok(())
     }
 
-    fn set_arity_unchecked(&mut self, n: usize) {
-        ConstraintGraph::<V>::fill_with(&mut self.children, None, n);
+    fn set_arity_unchecked(&mut self, new_arity: usize) {
+        ConstraintGraph::<V>::fill_with(&mut self.children, None, new_arity);
     }
 
     fn child(&self, n: usize) -> Option<TcKey> {
@@ -141,10 +141,8 @@ impl<V: Variant> Type<V> {
         let Partial { variant: new_variant, least_arity } =
             Variant::meet(left, right).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
 
-        let mut rhs_children = rhs.children.clone();
         // Make child arrays same length.
         ConstraintGraph::<V>::fill_with(&mut lhs.children, None, right_arity); // Will be checked later.
-        ConstraintGraph::<V>::fill_with(&mut rhs_children, None, left_arity); // Just a copy.
 
         let (mut equates, new_children): (OptEquateObligation, Vec<Option<TcKey>>) = lhs
             .children
@@ -242,7 +240,7 @@ impl<T: Variant> ConstraintGraph<T> {
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
     pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize) -> Result<TcKey, TcErr<T>> {
         let parent_v = self.repr_mut(parent);
-        parent_v.ty.set_arity_checked(parent, n)?;
+        parent_v.ty.set_arity_checked(parent, n + 1)?; // n is an index, we want an arity of n+1
         let nth_child = parent_v.ty.child(n);
         if let Some(child) = nth_child {
             return Ok(child);
