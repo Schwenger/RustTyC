@@ -76,7 +76,7 @@ impl<V: Variant> Type<V> {
 
     fn set_arity_checked(&mut self, this: TcKey, n: usize) -> Result<(), TcErr<V>> {
         match self.variant.arity() {
-            Arity::Fixed(arity) if n > arity => {
+            Arity::Fixed(arity) if n >= arity => {
                 return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), n))
             }
             Arity::Fixed(arity) => ConstraintGraph::<V>::fill_with(&mut self.children, None, arity),
