@@ -3,7 +3,6 @@
 [![Crate](https://img.shields.io/crates/v/rusttyc.svg)](https://crates.io/crates/rusttyc)
 [![API](https://docs.rs/rusttyc/badge.svg)](https://docs.rs/rusttyc)
 [![License](https://img.shields.io/crates/l/rusttyc)](https://crates.io/crates/rusttyc)
-[![Dependencies](https://img.shields.io/librariesio/release/cargo/rusttyc)](https://libraries.io/cargo/rusttyc)
 
 
 <img src="https://mschwenger.de/wp-content/uploads/2020/07/rusttyc-logo.png" alt="RustTyC Logo" title="RustTyC Logo" style="width: 10em; border: none; float: right;"/>
