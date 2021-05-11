@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/crates/l/rusttyc)](https://crates.io/crates/rusttyc)
 
 
-<img src="https://mschwenger.de/wp-content/uploads/2020/07/rusttyc-logo.png" alt="RustTyC Logo" title="RustTyC Logo" style="width: 10em; border: none; float: right;"/>
+<img src="http://mschwenger.de/assets/img/thumbnails/rusttyc.svg" alt="RustTyC Logo" title="RustTyC Logo" style="width: 10em; border: none; float: right;"/>
 
 RustTyC is a simple interface for translating type rules into rust and performs the type checking procedure to generate a type table.
 
