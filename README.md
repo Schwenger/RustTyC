@@ -13,7 +13,7 @@ RustTyC is a simple interface for translating type rules into rust and performs 
 
 - Add dependency from [crates.io](https://crates.io/crates/rusttyc "crates.io").
 - Check out the [documentation](https://schwenger.github.io/RustTyC/ "documentation").
-- Basic introduction to type lattices and inference rules on my [blog](https://mschwenger.de/rusttyc "blog").
+- Basic introduction to type lattices and inference rules on my [blog](https://mschwenger.de/projects/rusttyc.html "blog").
 
 # What is RustTyC?
 
@@ -24,12 +24,12 @@ RustTyC provides an interface that allows for an intuitive translation of infere
 The first and most obvious step is to add the dependency to your `Cargo.toml`:
 
 ```
-rusttyc = "^0.3.1"
+rusttyc = "0.4.*"
 ```
 
 Next, let's talk data structures. I assume you already have some code data structure representing programs you want to type-check. We'll call this the AST. Then, you need some representation of types, which we'll call `AbsTy`. Most likely, this is an enum listing all possible types a value can have, including unresolved types (`Top/Unconstrained/Infer`), abstract types (`Numeric`) and recursive type (`Option(Box<AbsTy>)` or `Either(Box<AbsTy>, Box<AbsTy>)`).
 
-To obtain a lattice structure, implement the `rusttyc::Abstract` type. This entails that you implement the `Abstract::meet(&self, &Self) -> Result<Self, Self::Err>` function. Just as expected, it takes two abstract types and provides a new one according to the rules for type lattices. If the two types are incompatible, it returns an error with some debug information. The type checker will enrich the error with some more context information to make it easily traceable.
+To obtain a lattice structure, implement the `rusttyc::Variant` type. This requires you to implement three functions and provide an associated error type (`Variant::Err`). Before getting to the meet of the implementation (do you see what I did there?), let's cover the simple functions: `Variant::top()`, which provides the top element of the type lattice, and `Variant::arity(&self) -> Arity`, which provides the arity of a specific type. The arity can be either `Arity::Variable` or `Arity::Fixed(usize)`. Nothing too exciting here. Lastly, there is the `Variant::meet(Partial<Self>, Partial<Self>) -> Result<Partial<Self>, Self::Err>` function. If you forget about the Partial thingy for a second, this is exactly what we would expect: it takes two abstract types and provides a new one according to the rules for type lattices. If the two types are incompatible, it returns an error with some debug information. Note that type checker will enrich the error with some more context information to make it easily traceable, hence producing a `TcErr`. If you are curious, have a glance at its documentation. So, what's the deal with the `Partial`? A `Partial` is the combination of a `Variant` and the least number of children the respective type has. So, for example, a numeric type typically does not have a child. Thus, when wrapped in a `Partial` its `Partial::least_arity` will always be 0. A tuple-type, however, is a different story entirely. Suppose a variable represents a nonuple (9-tuple), but the type inference only infered that there will be a child at places 0, 3 and 4. In this case, its `Partial::least_arity` will be 5 (recall: index 4 occupied indicates at least 5 elements). Similarly, if the type is the top variant, it might resolve to a tuple or an option, hence it arity can only be a lower bound.
 
 What's left to do now is to start collecting constraints. In your code, create a new type checker with `rusttyc::TypeChecker::new()` and traverse your AST. For each node in the AST create a `rusttyc::TcKey` and impose a set of constraints on it. The key represents either a node of the AST (whatever this may be) or a variable. The special point of variables is that they might occur several times in the AST and refer to the same object. There are several ways to handle this challenge, the by far easiest is to let the type checker take care of it. For this, call the `TypeChecker::get_var_key(&mut self, var: Var) -> TcKey` function. Calling this function multiple times with the same variable will return the same key; for your convenience.
 
@@ -47,7 +47,7 @@ Now the interesting part: performing the addition. The idea is to check both sub
 let left = tc_expr(&mut tc, lhs);
 let right = tc_expr(&mut tc, rhs);
 let key = tc.new_term_key();
-tc.impose(key.is_sym_meet_of(left, right))?;
+tc.impose(key.is_meet_of(left, right))?;
 Ok(key)
 ```
 
@@ -58,7 +58,7 @@ Let's wrap up by assigning the value. For this, we recursively check the express
 ```rust
 let res = tc_expr(rhs);
 let key = tc.get_var_key(lhs);
-tc.impose(lhs.equate(key))?;
+tc.impose(lhs.is_sym_meet_of(key))?;
 Ok(key)
 ```
 
@@ -70,4 +70,4 @@ let type_table = tc.type_check()?;
 
 ### (A-)Symmetric Relations
 
-One thing that needs some clarification is symmetric and asymmetric type relations. RustTyc offers to impose both kinds of relations. A symmetric relation between two keys `k`, and `k'` entails that a refinement of one also refines the other. Suppose `k` is in an asymmetric relation with `k'`, e.g. `k` is more concrete than `k'`. In this case, refining the type of `k'` entails a refinement of `k`, but *not* vice versa. A regular meet (`TcKey::is_meet_of(...)`) is inherently asymmetric, the symmetric counterpart is `TcKey::is_sym_meet_of(...)`. Similarly, for binary relations we have `TcKey::is_more_conc_than(...)` (asymmetric) and `TcKey::equate(...)` (symmetric).
+One thing you need to keep in mind is that type relations are like friendships: some are symmetric, some are not. And all is well if everyone is aware of that. So RustTyc offers to impose both kinds of relations. A symmetric relation between two keys `k`, and `k'` entails that a refinement of one also refines the other. Suppose `k` is in an asymmetric relation with `k'`, e.g. `k` is more concrete than `k'`. In this case, refining the type of `k'` entails a refinement of `k`, but not vice versa. A regular meet (`TcKey::is_meet_of(...)`) is inherently asymmetric, the symmetric counterpart is `TcKey::is_sym_meet_of(...)`.
