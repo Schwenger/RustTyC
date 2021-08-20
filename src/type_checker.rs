@@ -146,6 +146,14 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         self.graph.all_keys()
     }
 
+    /// TODO
+    pub fn update_context<F>(&mut self, update: F)
+    where
+        F: FnOnce(&mut V::Context),
+    {
+        update(&mut self.context);
+    }
+
     /// Finalizes the type check procedure without constructing a full type table.  Refer to [TypeChecker::type_check] if [Variant] implements [Constructable].
     /// Calling this function indicates that all relevant information was passed on to the type checker.
     /// It will attempt to resolve all constraints and return a type table mapping each registered key to its minimally constrained [Variant]s.
