@@ -1,23 +1,23 @@
 use crate::{
-    types::{Arity, Constructable, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant},
+    types::{Arity, Constructable, ContextSensitiveVariant, Partial, Preliminary, PreliminaryTypeTable, TypeTable},
     TcErr, TcKey,
 };
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
-pub(crate) struct ConstraintGraph<T: Variant> {
+pub(crate) struct ConstraintGraph<T: ContextSensitiveVariant> {
     vertices: Vec<Vertex<T>>,
 }
 
 #[derive(Debug, Clone)]
-enum Vertex<T: Variant> {
+enum Vertex<T: ContextSensitiveVariant> {
     /// Represents a former vertex that was unified with another one and not chosen to be the representative.
     Fwd { this: TcKey, repr: TcKey },
     /// Represents a full vertex.
     Repr(FullVertex<T>),
 }
 
-impl<T: Variant> Vertex<T> {
+impl<T: ContextSensitiveVariant> Vertex<T> {
     fn this(&self) -> TcKey {
         match self {
             Vertex::Fwd { this, .. } => *this,
@@ -55,13 +55,13 @@ impl<T: Variant> Vertex<T> {
 }
 
 #[derive(Debug, Clone)]
-struct FullVertex<T: Variant> {
+struct FullVertex<T: ContextSensitiveVariant> {
     this: TcKey,
     ty: Type<T>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Type<V: Variant> {
+struct Type<V: ContextSensitiveVariant> {
     variant: V,
     children: Vec<Option<TcKey>>,
     upper_bounds: HashSet<TcKey>,
@@ -69,13 +69,19 @@ struct Type<V: Variant> {
 
 type EquateObligation = Vec<(TcKey, TcKey)>;
 type OptEquateObligation = Vec<Option<(TcKey, TcKey)>>;
-impl<V: Variant> Type<V> {
+impl<V: ContextSensitiveVariant> Type<V> {
     fn top() -> Self {
         Type { variant: V::top(), children: Vec::new(), upper_bounds: HashSet::new() }
     }
 
-    fn set_arity_checked(&mut self, this: TcKey, new_arity: usize) -> Result<(), TcErr<V>> {
-        match self.variant.arity() {
+    fn equal(this: &Self, that: &Self, ctx: &V::Context) -> bool {
+        V::equal(&this.variant, &that.variant, ctx)
+            && this.children == that.children
+            && this.upper_bounds == that.upper_bounds
+    }
+
+    fn set_arity_checked(&mut self, this: TcKey, new_arity: usize, ctx: &V::Context) -> Result<(), TcErr<V>> {
+        match self.variant.arity(ctx) {
             Arity::Fixed(given_arity) if new_arity > given_arity => {
                 return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity))
             }
@@ -112,7 +118,7 @@ impl<V: Variant> Type<V> {
     //     let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
     //     let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
     //     let Partial { variant, least_arity } =
-    //         Variant::meet(left, right).map_err(|e| TcErr::Bound(target_key, None, e))?;
+    //         ContextSensitiveVariant::meet(left, right).map_err(|e| TcErr::Bound(target_key, None, e))?;
 
     //     let zipped = lhs.children.iter().zip(rhs.children.iter());
     //     let equates: EquateObligation = zipped.clone().flat_map(|(a, b)| a.zip(*b)).collect();
@@ -125,21 +131,27 @@ impl<V: Variant> Type<V> {
     //     Ok((res, equates))
     // }
 
-    fn meet(&mut self, this: TcKey, target_key: TcKey, rhs: &Self) -> Result<EquateObligation, TcErr<V>> {
+    fn meet(
+        &mut self,
+        this: TcKey,
+        target_key: TcKey,
+        rhs: &Self,
+        ctx: &V::Context,
+    ) -> Result<EquateObligation, TcErr<V>> {
         // TODO: Extremely inefficient; improve.
         let lhs = self;
         let left_arity = lhs.children.len();
         let right_arity = rhs.children.len();
 
-        debug_assert!(lhs.variant.arity().to_opt().map(|a| a == left_arity).unwrap_or(true));
-        debug_assert!(rhs.variant.arity().to_opt().map(|a| a == right_arity).unwrap_or(true));
+        debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == left_arity).unwrap_or(true));
+        debug_assert!(rhs.variant.arity(ctx).to_opt().map(|a| a == right_arity).unwrap_or(true));
 
         // println!("Meeting {:?} and {:?}.", lhs, rhs);
 
         let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
         let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
         let Partial { variant: new_variant, least_arity } =
-            Variant::meet(left, right).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
+            ContextSensitiveVariant::meet(left, right, ctx).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
 
         // Make child arrays same length.
         ConstraintGraph::<V>::fill_with(&mut lhs.children, None, right_arity); // Will be checked later.
@@ -157,11 +169,11 @@ impl<V: Variant> Type<V> {
         lhs.variant = new_variant;
         lhs.children = new_children;
         lhs.upper_bounds.extend(rhs.upper_bounds.iter());
-        lhs.set_arity_checked(target_key, least_arity)?;
+        lhs.set_arity_checked(target_key, least_arity, ctx)?;
 
         // println!("Result: {:?}", lhs);
 
-        debug_assert!(lhs.variant.arity().to_opt().map(|a| a == lhs.children.len()).unwrap_or(true));
+        debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == lhs.children.len()).unwrap_or(true));
 
         Ok(equates)
     }
@@ -170,9 +182,9 @@ impl<V: Variant> Type<V> {
         Partial { variant: self.variant.clone(), least_arity: self.children.len() }
     }
 
-    fn with_partial(&mut self, this: TcKey, p: Partial<V>) -> Result<(), TcErr<V>> {
+    fn with_partial(&mut self, this: TcKey, p: Partial<V>, ctx: &V::Context) -> Result<(), TcErr<V>> {
         let Partial { variant, least_arity } = p;
-        match variant.arity() {
+        match variant.arity(ctx) {
             Arity::Variable => {
                 self.variant = variant;
                 self.set_arity_unchecked(least_arity); // set_arity increases or is no-op.
@@ -193,7 +205,7 @@ impl<V: Variant> Type<V> {
                 }
                 self.variant = variant;
                 self.set_arity_unchecked(least_arity); // set_arity increases or is no-op.
-                debug_assert!(self.variant.arity().to_opt().map(|a| a == self.children.len()).unwrap_or(true));
+                debug_assert!(self.variant.arity(ctx).to_opt().map(|a| a == self.children.len()).unwrap_or(true));
                 Ok(())
             }
         }
@@ -204,16 +216,16 @@ impl<V: Variant> Type<V> {
     }
 }
 
-impl<T: Variant> Vertex<T> {
+impl<T: ContextSensitiveVariant> Vertex<T> {
     /// Creates a full vertex without information regarding its children.
     fn new_niladic(this: TcKey) -> Vertex<T> {
         Vertex::Repr(FullVertex { this, ty: Type::top() })
     }
 }
 
-impl<T: Variant> ConstraintGraph<T> {
+impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     /// Creates an empty constraint graph.
-    pub(crate) fn new() -> ConstraintGraph<T> {
+    pub(crate) fn new() -> Self {
         ConstraintGraph { vertices: Vec::new() }
     }
 
@@ -238,9 +250,9 @@ impl<T: Variant> ConstraintGraph<T> {
     /// the key is returned without calling the `keygen` function.  Otherwise, `keygen` generates a new key which will be added to the graph regularly,
     /// associated with the child, and returned.
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
-    pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize) -> Result<TcKey, TcErr<T>> {
+    pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize, context: &T::Context) -> Result<TcKey, TcErr<T>> {
         let parent_v = self.repr_mut(parent);
-        parent_v.ty.set_arity_checked(parent, n + 1)?; // n is an index, we want an arity of n+1
+        parent_v.ty.set_arity_checked(parent, n + 1, context)?; // n is an index, we want an arity of n+1
         let nth_child = parent_v.ty.child(n);
         if let Some(child) = nth_child {
             return Ok(child);
@@ -257,22 +269,22 @@ impl<T: Variant> ConstraintGraph<T> {
     }
 
     /// Declares a symmetric relation between two keys.
-    pub(crate) fn equate(&mut self, left: TcKey, right: TcKey) -> Result<(), TcErr<T>> {
+    pub(crate) fn equate(&mut self, left: TcKey, right: TcKey, context: &T::Context) -> Result<(), TcErr<T>> {
         let left = self.repr(left).this;
         let right = self.repr(right).this;
         let (rep, sub) = if left < right { (left, right) } else { (right, left) };
-        self.establish_fwd(sub, rep)
+        self.establish_fwd(sub, rep, context)
     }
 
     /// Imposes an explicit bound on a key.  An Err return indicates a contradiction, an Ok does not indicate the absence of a contradiction.
-    pub(crate) fn explicit_bound(&mut self, target: TcKey, bound: T) -> Result<(), TcErr<T>> {
-        self.add_explicit_bound(target, bound).map(|_| ())
+    pub(crate) fn explicit_bound(&mut self, target: TcKey, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
+        self.add_explicit_bound(target, bound, context).map(|_| ())
     }
 
     // INTERNAL HELPER FUNCTIONS
 
     /// Transforms `sub` into a forward to `repr`.
-    fn establish_fwd(&mut self, sub: TcKey, repr: TcKey) -> Result<(), TcErr<T>> {
+    fn establish_fwd(&mut self, sub: TcKey, repr: TcKey, context: &T::Context) -> Result<(), TcErr<T>> {
         if sub == repr {
             // sub and repr are already in the same eq class since we started
             // out with the identity relation;  nothing to do.
@@ -287,9 +299,9 @@ impl<T: Variant> ConstraintGraph<T> {
         let repr_v = self.repr_mut(repr);
         // Meet-Alternative: let repr_v = self.repr(repr);
 
-        let equates = repr_v.ty.meet(repr, sub, &sub_v.ty)?;
+        let equates = repr_v.ty.meet(repr, sub, &sub_v.ty, context)?;
         // Meet-Alternative: let (new_ty, equates) = repr_v.ty.meet(repr, &sub_v.ty)?;
-        equates.into_iter().try_for_each(|(a, b)| self.equate(a, b))?;
+        equates.into_iter().try_for_each(|(a, b)| self.equate(a, b, context))?;
 
         // Meet-Alternative: self.repr_mut(repr).ty = new_ty;
         Ok(())
@@ -302,13 +314,13 @@ impl<T: Variant> ConstraintGraph<T> {
         v.this
     }
 
-    fn add_explicit_bound(&mut self, target: TcKey, bound: T) -> Result<(), TcErr<T>> {
+    fn add_explicit_bound(&mut self, target: TcKey, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
         let target_v = self.repr_mut(target);
         let lhs = target_v.ty.to_partial();
-        let rhs_arity = bound.arity().to_opt().unwrap_or(0);
+        let rhs_arity = bound.arity(context).to_opt().unwrap_or(0);
         let rhs = Partial { variant: bound, least_arity: rhs_arity };
-        let meet = T::meet(lhs, rhs).map_err(|e| TcErr::Bound(target, None, e))?;
-        target_v.ty.with_partial(target, meet)
+        let meet = T::meet(lhs, rhs, context).map_err(|e| TcErr::Bound(target, None, e))?;
+        target_v.ty.with_partial(target, meet, context)
     }
 
     // ACCESS LOGIC
@@ -350,20 +362,20 @@ impl<T: Variant> ConstraintGraph<T> {
     }
 }
 
-impl<T: Variant> ConstraintGraph<T> {
+impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  
     /// Returns the type table mapping each registered key to a type if no contradiction occurs.
-    fn solve_constraints(&mut self) -> Result<(), TcErr<T>> {
+    fn solve_constraints(&mut self, context: T::Context) -> Result<(), TcErr<T>> {
         let mut change = true;
         while change {
             change = false;
-            change |= self.resolve_asymmetric()?;
+            change |= self.resolve_asymmetric(&context)?;
         }
         Ok(())
     }
 
-    pub(crate) fn solve_preliminary(mut self) -> Result<PreliminaryTypeTable<T>, TcErr<T>> {
-        self.solve_constraints()?;
+    pub(crate) fn solve_preliminary(mut self, context: T::Context) -> Result<PreliminaryTypeTable<T>, TcErr<T>> {
+        self.solve_constraints(context)?;
         Ok(self.construct_preliminary())
     }
 
@@ -378,7 +390,7 @@ impl<T: Variant> ConstraintGraph<T> {
     }
 
     /// Meets all the types of upper bounds with the type of the vertex itself.
-    fn resolve_asymmetric(&mut self) -> Result<bool, TcErr<T>> {
+    fn resolve_asymmetric(&mut self, context: &T::Context) -> Result<bool, TcErr<T>> {
         self.vertices
             .iter()
             .map(Vertex::this)
@@ -391,7 +403,7 @@ impl<T: Variant> ConstraintGraph<T> {
                     vertex.ty.upper_bounds.iter().map(|b| (&self.repr(*b).ty, *b)).fold(Ok(initial), |lhs, rhs| {
                         let (mut old_ty, mut equates) = lhs?;
                         let (rhs, partner_key) = rhs;
-                        let new_equates = old_ty.meet(key, partner_key, rhs)?;
+                        let new_equates = old_ty.meet(key, partner_key, rhs, context)?;
                         // Meet-Alternative:
                         // let (old_ty, mut equates) = lhs?;
                         // let (new_ty, new_equates) = old_ty.meet(key, rhs)?;
@@ -399,9 +411,9 @@ impl<T: Variant> ConstraintGraph<T> {
                         // Meet-Alternative: Ok((new_ty, equates))
                         Ok((old_ty, equates))
                     })?;
-                let change = vertex.ty != new_type;
+                let change = Type::equal(&vertex.ty, &new_type, context);
                 self.repr_mut(key).ty = new_type;
-                equates.into_iter().try_for_each(|(k1, k2)| self.equate(k1, k2))?;
+                equates.into_iter().try_for_each(|(k1, k2)| self.equate(k1, k2, context))?;
                 Ok(change)
             })
             .collect::<Result<Vec<bool>, TcErr<T>>>()
@@ -413,8 +425,8 @@ impl<V> ConstraintGraph<V>
 where
     V: Constructable,
 {
-    pub(crate) fn solve(mut self) -> Result<TypeTable<V>, TcErr<V>> {
-        self.solve_constraints()?;
+    pub(crate) fn solve(mut self, context: V::Context) -> Result<TypeTable<V>, TcErr<V>> {
+        self.solve_constraints(context)?;
         self.construct_types()
     }
 

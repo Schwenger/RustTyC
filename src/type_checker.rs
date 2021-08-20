@@ -1,5 +1,5 @@
 use crate::constraint_graph::ConstraintGraph;
-use crate::types::{Constructable, PreliminaryTypeTable, TypeTable, Variant};
+use crate::types::{Constructable, ContextSensitiveVariant, PreliminaryTypeTable, TypeTable, Variant};
 use crate::{
     keys::{Constraint, TcKey},
     types::Preliminary,
@@ -42,9 +42,10 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 /// # Example
 /// See [`crate documentation`](index.html).
 #[derive(Debug, Clone)]
-pub struct TypeChecker<V: Variant, Var: TcVar> {
+pub struct TypeChecker<V: ContextSensitiveVariant, Var: TcVar> {
     variables: HashMap<Var, TcKey>,
     graph: ConstraintGraph<V>,
+    context: V::Context,
 }
 
 impl<V: Variant, Var: TcVar> Default for TypeChecker<V, Var> {
@@ -73,7 +74,13 @@ impl<V: Variant> TypeChecker<V, NoVars> {
 impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     /// Creates a new, empty type checker.  
     pub fn new() -> Self {
-        TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new() }
+        Self::with_context(())
+    }
+}
+impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
+    /// Creates a new, empty type checker.  
+    pub fn with_context(context: V::Context) -> Self {
+        TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new(), context }
     }
 
     /// Generates a new key representing a term.  
@@ -100,7 +107,10 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
     pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<V>> {
-        self.graph.nth_child(parent, nth)
+        let TypeChecker { graph, variables: _, context } = self;
+        let key = graph.nth_child(parent, nth, &context)?;
+        // *self = TypeChecker { graph, variables, context };
+        Ok(key)
     }
 
     /// Imposes a constraint on keys.  They can be obtained by using the associated functions of [TcKey].
@@ -108,9 +118,15 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     pub fn impose(&mut self, constr: Constraint<V>) -> Result<(), TcErr<V>> {
         match constr {
             Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
-            Constraint::Equal(a, b) => self.graph.equate(a, b)?,
+            Constraint::Equal(a, b) => {
+                let TypeChecker { graph, variables: _, context } = self;
+                graph.equate(a, b, &context)?;
+            }
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
-            Constraint::MoreConcExplicit(target, bound) => self.graph.explicit_bound(target, bound)?,
+            Constraint::MoreConcExplicit(target, bound) => {
+                let TypeChecker { graph, variables: _, context } = self;
+                graph.explicit_bound(target, bound, &context)?;
+            }
         }
         Ok(())
     }
@@ -136,7 +152,8 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     /// For recursive types, the respective [Preliminary] provides access to [crate::TcKey]s refering to their children.
     /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
     pub fn type_check_preliminary(self) -> Result<PreliminaryTypeTable<V>, TcErr<V>> {
-        self.graph.solve_preliminary()
+        let TypeChecker { graph, variables: _, context } = self;
+        graph.solve_preliminary(context)
     }
 }
 
@@ -150,15 +167,16 @@ where
     /// minimally constrained, constructed type, i.e. [Constructable::Type].  Refer to [TypeChecker::type_check_preliminary()] if [Variant] does not implement [Constructable].
     /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
     pub fn type_check(self) -> Result<TypeTable<V>, TcErr<V>> {
-        self.graph.solve()
+        let TypeChecker { graph, variables: _, context } = self;
+        graph.solve(context)
     }
 }
 
 /// Represents an error during the type check procedure.
 #[derive(Debug, Clone)]
-pub enum TcErr<V: Variant> {
+pub enum TcErr<V: ContextSensitiveVariant> {
     /// Two keys were attempted to be equated and their underlying types turned out to be incompatible.
-    /// Contains the two keys and the error that occurred when attempting to meet their [Variant] types.
+    /// Contains the two keys and the error that occurred when attempting to meet their [ContextSensitiveVariant] types.
     KeyEquation(TcKey, TcKey, V::Err),
     /// An explicit type bound imposed on a key turned out to be incompatible with the type inferred based on
     /// remaining information on the key.  Contains the key and the error that occurred when meeting the explicit
@@ -185,7 +203,7 @@ pub enum TcErr<V: Variant> {
     Construction(TcKey, Preliminary<V>, V::Err),
     /// This error indicates that a variant requires children, for one of which the construction failed.
     /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
-    /// In this case, the construction attempts and might fail to construct a child out of a [Variant::top()].
+    /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
     /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
     /// reported by the construction of the child.
     ChildConstruction(TcKey, usize, Preliminary<V>, V::Err),

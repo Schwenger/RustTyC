@@ -50,11 +50,6 @@ pub trait Variant: Sized + Clone + Debug + Eq {
     /// Returns the unconstrained, most abstract type.
     fn top() -> Self;
 
-    /// Determines whether or not `self` is the unconstrained type.
-    fn is_top(&self) -> bool {
-        self == &Self::top()
-    }
-
     /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
     /// Refer to [Variant] for the responsibilities of this function.
     /// In particular: `usize::max(lhs.least_arity, rhs.least_arity) <= result.least_arity`
@@ -68,7 +63,58 @@ pub trait Variant: Sized + Clone + Debug + Eq {
     /// the tuple has a variable arity and potentially a different variant.
     fn arity(&self) -> Arity;
 }
-/// Represents the arity of a [Variant].
+
+/// TODO
+pub trait ContextSensitiveVariant: Sized + Clone + Debug {
+    /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
+    /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
+    type Err: Debug;
+    /// TODO
+    type Context: Debug + Clone;
+
+    /// Returns the unconstrained, most abstract type.
+    fn top() -> Self;
+
+    /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
+    /// Refer to [Variant] for the responsibilities of this function.
+    /// In particular: `usize::max(lhs.least_arity, rhs.least_arity) <= result.least_arity`
+    /// In the successful case, the variant and arity of the partial have to match, i.e., if the [Arity]
+    /// is fixed with value `n`, then [Partial::least_arity] needs to be `n` as well.
+    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, ctx: &Self::Context) -> Result<Partial<Self>, Self::Err>;
+
+    /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
+    /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
+    /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
+    /// the tuple has a variable arity and potentially a different variant.
+    fn arity(&self, ctx: &Self::Context) -> Arity;
+
+    /// TODO
+    fn equal(this: &Self, that: &Self, ctx: &Self::Context) -> bool;
+}
+
+impl<V: Variant> ContextSensitiveVariant for V {
+    type Err = V::Err;
+
+    type Context = ();
+
+    fn top() -> Self {
+        V::top()
+    }
+
+    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, _ctx: &Self::Context) -> Result<Partial<Self>, Self::Err> {
+        V::meet(lhs, rhs)
+    }
+
+    fn arity(&self, _ctx: &Self::Context) -> Arity {
+        self.arity()
+    }
+
+    fn equal(this: &Self, that: &Self, _ctx: &Self::Context) -> bool {
+        this == that
+    }
+}
+
+/// Represents the arity of a [ContextSensitiveVariant].
 #[derive(Debug, Clone, Copy)]
 pub enum Arity {
     /// The arity is variable, i.e., it does not have a specific value.
@@ -86,12 +132,12 @@ impl Arity {
     }
 }
 
-/// Partial is a container for a [Variant] and the least arity a particular instance of this variant currently has. Only used for [Variant::meet()].
+/// Partial is a container for a [ContextSensitiveVariant] and the least arity a particular instance of this variant currently has. Only used for [ContextSensitiveVariant::meet()].
 ///
 /// The `least_arity` indicates how many children this instance of the variance has according to the current state of the type checker.
 /// The value might increase in the future but never decrease.
 #[derive(Debug, Clone)]
-pub struct Partial<V: Variant> {
+pub struct Partial<V: Sized> {
     /// The variant represented by this `Partial`.
     pub variant: V,
     ///The least number of children the variant will have after completing the type check.
@@ -100,23 +146,23 @@ pub struct Partial<V: Variant> {
 
 /// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].
 #[derive(Debug, Clone)]
-pub struct Preliminary<V: Variant> {
+pub struct Preliminary<V: ContextSensitiveVariant> {
     /// The type variant of the entity represented by this `Preliminary`.
     pub variant: V,
     /// The [TcKey]s of the children of this variant.
     pub children: Vec<Option<TcKey>>,
 }
 
-/// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [Variant] does not implement [Constructable].
+/// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [ContextSensitiveVariant] does not implement [Constructable].
 pub type PreliminaryTypeTable<V> = HashMap<TcKey, Preliminary<V>>;
-/// A type table containing the constructed type of the inferred [Variant] for each [TcKey].  Requires [Variant] to implement [Constructable].
+/// A type table containing the constructed type of the inferred [ContextSensitiveVariant] for each [TcKey].  Requires [ContextSensitiveVariant] to implement [Constructable].
 pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
 
 /// A type implementing this trait can potentially be transformed into a concrete representation. This transformation can fail.
-pub trait Constructable: Variant {
+pub trait Constructable: ContextSensitiveVariant {
     /// The result type of the attempted construction.
     type Type: Clone + Debug;
     /// Attempts to transform `self` into an more concrete `Self::Type`.
-    /// Returns a [Variant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
-    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, <Self as Variant>::Err>;
+    /// Returns a [ContextSensitiveVariant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
+    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err>;
 }
