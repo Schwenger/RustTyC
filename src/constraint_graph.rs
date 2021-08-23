@@ -411,7 +411,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
                         // Meet-Alternative: Ok((new_ty, equates))
                         Ok((old_ty, equates))
                     })?;
-                let change = Type::equal(&vertex.ty, &new_type, context);
+                let change = !Type::equal(&vertex.ty, &new_type, context);
                 self.repr_mut(key).ty = new_type;
                 equates.into_iter().try_for_each(|(k1, k2)| self.equate(k1, k2, context))?;
                 Ok(change)
