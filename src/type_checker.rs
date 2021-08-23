@@ -215,4 +215,6 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
     /// reported by the construction of the child.
     ChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
+    /// TODO   
+    CyclicGraph,
 }

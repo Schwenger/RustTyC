@@ -366,6 +366,9 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  
     /// Returns the type table mapping each registered key to a type if no contradiction occurs.
     fn solve_constraints(&mut self, context: T::Context) -> Result<(), TcErr<T>> {
+        if self.is_cyclic() {
+            return Err(TcErr::CyclicGraph);
+        }
         let mut change = true;
         while change {
             change = false;
@@ -418,6 +421,25 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
             })
             .collect::<Result<Vec<bool>, TcErr<T>>>()
             .map(|changes| changes.into_iter().any(|b| b))
+    }
+
+    #[must_use]
+    fn is_cyclic(&self) -> bool {
+        self.vertices.iter().any(|v| self.is_in_loop(v, vec![]))
+    }
+
+    fn is_in_loop(&self, vertex: &Vertex<T>, mut history: Vec<TcKey>) -> bool {
+        match *vertex {
+            Vertex::Fwd { this, repr } => {
+                if history.contains(&this) {
+                    return true;
+                } else {
+                    history.push(this);
+                    return self.is_in_loop(self.vertex(repr), history);
+                }
+            }
+            Vertex::Repr(FullVertex { this, .. }) => return history.contains(&this),
+        }
     }
 }
 
