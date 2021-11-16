@@ -109,28 +109,6 @@ impl<V: ContextSensitiveVariant> Type<V> {
         let _ = self.upper_bounds.insert(bound);
     }
 
-    // Meet-Alternative:
-    // fn meet_alternative(&self, target_key: TcKey, rhs: &Self) -> Result<(Self, EquateObligation), TcErr<V>> {
-    //     // TODO: Extremely inefficient; improve.
-    //     let lhs = self;
-    //     let left_arity = lhs.children.len();
-    //     let right_arity = rhs.children.len();
-    //     let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
-    //     let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
-    //     let Partial { variant, least_arity } =
-    //         ContextSensitiveVariant::meet(left, right).map_err(|e| TcErr::Bound(target_key, None, e))?;
-
-    //     let zipped = lhs.children.iter().zip(rhs.children.iter());
-    //     let equates: EquateObligation = zipped.clone().flat_map(|(a, b)| a.zip(*b)).collect();
-    //     let children: Vec<Option<TcKey>> = zipped.map(|(a, b)| a.or(*b)).collect();
-    //     let upper_bounds: HashSet<TcKey> = lhs.upper_bounds.iter().chain(rhs.upper_bounds.iter()).cloned().collect(); // todo: setify
-
-    //     let mut res = Self { variant, children, upper_bounds };
-    //     res.set_arity(target_key, least_arity)?;
-
-    //     Ok((res, equates))
-    // }
-
     fn meet(
         &mut self,
         this: TcKey,
