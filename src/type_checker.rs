@@ -78,7 +78,7 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
     }
 }
 impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
-    /// Creates a new, empty type checker.  
+    /// Creates a new, empty type checker with the given context.  
     pub fn with_context(context: V::Context) -> Self {
         TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new(), context }
     }
@@ -146,7 +146,14 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         self.graph.all_keys()
     }
 
-    /// TODO
+    /// Updates the current context.
+    ///
+    /// Applies the `update` function to the context of the current typechecker.
+    /// The function may mutate the context.  
+    ///
+    /// # Warning
+    /// This will not change any call retroactively, i.e. it only applies to future
+    /// meet and equate calls.  Proceed with caution.
     pub fn update_context<F>(&mut self, update: F)
     where
         F: FnOnce(&mut V::Context),
@@ -215,6 +222,7 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
     /// reported by the construction of the child.
     ChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
-    /// TODO   
+    /// This error reports cyclic non-equality dependencies in the constraint graph.
+    /// Example: Key 1 is more concrete than Key 2, which is more concrete than Key 3, which is more concrete than Key 1.
     CyclicGraph,
 }
