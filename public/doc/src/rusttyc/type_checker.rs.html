@@ -221,6 +221,14 @@
 <span id="218">218</span>
 <span id="219">219</span>
 <span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">constraint_graph</span>::<span class="ident">ConstraintGraph</span>;
 <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">types</span>::{<span class="ident">Constructable</span>, <span class="ident">ContextSensitiveVariant</span>, <span class="ident">PreliminaryTypeTable</span>, <span class="ident">TypeTable</span>, <span class="ident">Variant</span>};
@@ -302,7 +310,7 @@
     }
 }
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">ContextSensitiveVariant</span>, <span class="ident">Var</span>: <span class="ident">TcVar</span><span class="op">&gt;</span> <span class="ident">TypeChecker</span><span class="op">&lt;</span><span class="ident">V</span>, <span class="ident">Var</span><span class="op">&gt;</span> {
-    <span class="doccomment">/// Creates a new, empty type checker.  </span>
+    <span class="doccomment">/// Creates a new, empty type checker with the given context.  </span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">with_context</span>(<span class="ident">context</span>: <span class="ident">V</span>::<span class="ident">Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
         <span class="ident">TypeChecker</span> { <span class="ident">variables</span>: <span class="ident">HashMap</span>::<span class="ident">new</span>(), <span class="ident">graph</span>: <span class="ident">ConstraintGraph</span>::<span class="ident">new</span>(), <span class="ident">context</span> }
     }
@@ -370,7 +378,14 @@
         <span class="self">self</span>.<span class="ident">graph</span>.<span class="ident">all_keys</span>()
     }
 
-    <span class="doccomment">/// TODO</span>
+    <span class="doccomment">/// Updates the current context.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// Applies the `update` function to the context of the current typechecker.</span>
+    <span class="doccomment">/// The function may mutate the context.  </span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// # Warning</span>
+    <span class="doccomment">/// This will not change any call retroactively, i.e. it only applies to future</span>
+    <span class="doccomment">/// meet and equate calls.  Proceed with caution.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">update_context</span><span class="op">&lt;</span><span class="ident">F</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">update</span>: <span class="ident">F</span>)
     <span class="kw">where</span>
         <span class="ident">F</span>: <span class="ident">FnOnce</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">V</span>::<span class="ident">Context</span>),
@@ -439,7 +454,8 @@
     <span class="doccomment">/// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error</span>
     <span class="doccomment">/// reported by the construction of the child.</span>
     <span class="ident">ChildConstruction</span>(<span class="ident">TcKey</span>, <span class="ident">usize</span>, <span class="ident">Preliminary</span><span class="op">&lt;</span><span class="ident">V</span><span class="op">&gt;</span>, <span class="ident">V</span>::<span class="prelude-val">Err</span>),
-    <span class="doccomment">/// TODO   </span>
+    <span class="doccomment">/// This error reports cyclic non-equality dependencies in the constraint graph.</span>
+    <span class="doccomment">/// Example: Key 1 is more concrete than Key 2, which is more concrete than Key 3, which is more concrete than Key 1.</span>
     <span class="ident">CyclicGraph</span>,
 }
 </pre></div>
