@@ -1,3 +1,3 @@
 (function() {var implementors = {};
-implementors["rusttyc"] = [{"text":"impl&lt;V:&nbsp;Variant, Var:&nbsp;TcVar&gt; Default for TypeChecker&lt;V, Var&gt;","synthetic":false,"types":[]}];
+implementors["rusttyc"] = [{"text":"impl&lt;V:&nbsp;<a class=\"trait\" href=\"rusttyc/types/trait.Variant.html\" title=\"trait rusttyc::types::Variant\">Variant</a>, Var:&nbsp;<a class=\"trait\" href=\"rusttyc/trait.TcVar.html\" title=\"trait rusttyc::TcVar\">TcVar</a>&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/default/trait.Default.html\" title=\"trait core::default::Default\">Default</a> for <a class=\"struct\" href=\"rusttyc/struct.TypeChecker.html\" title=\"struct rusttyc::TypeChecker\">TypeChecker</a>&lt;V, Var&gt;","synthetic":false,"types":["rusttyc::type_checker::TypeChecker"]}];
 if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

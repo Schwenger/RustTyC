@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/types.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>types.rs - source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
 <link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
-<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../rusttyc/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><span class="help-button">?</span>
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../rusttyc/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
                 <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
 <span id="2">  2</span>
 <span id="3">  3</span>
@@ -123,6 +123,62 @@
 <span id="120">120</span>
 <span id="121">121</span>
 <span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="doccomment">//! This mod contains everything related to types and collections of types (type tables).</span>
 <span class="doccomment">//!</span>
@@ -168,6 +224,10 @@
 <span class="doccomment">/// # Example</span>
 <span class="doccomment">/// For a full example of an abstract type system, refer to the [crate documentation](../index.html) and the examples.</span>
 <span class="doccomment">///</span>
+<span class="doccomment">/// # Context</span>
+<span class="doccomment">/// If the variant requires a context for the meet and/or equality operation, refer to [ContextSensitiveVariant].</span>
+<span class="doccomment">/// Each [Variant] automatically implements [ContextSensitiveVariant].</span>
+<span class="doccomment">///</span>
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">Variant</span>: <span class="ident">Sized</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Debug</span> <span class="op">+</span> <span class="ident">Eq</span> {
     <span class="doccomment">/// Result of a meet of two incompatible type, i.e., it represents a type contradiction.</span>
     <span class="doccomment">/// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.</span>
@@ -175,11 +235,6 @@
 
     <span class="doccomment">/// Returns the unconstrained, most abstract type.</span>
     <span class="kw">fn</span> <span class="ident">top</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span>;
-
-    <span class="doccomment">/// Determines whether or not `self` is the unconstrained type.</span>
-    <span class="kw">fn</span> <span class="ident">is_top</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
-        <span class="self">self</span> <span class="op">=</span><span class="op">=</span> <span class="kw-2">&amp;</span><span class="self">Self</span>::<span class="ident">top</span>()
-    }
 
     <span class="doccomment">/// Attempts to meet two variants respecting their currently-determined potentially variable arity.</span>
     <span class="doccomment">/// Refer to [Variant] for the responsibilities of this function.</span>
@@ -194,7 +249,63 @@
     <span class="doccomment">/// the tuple has a variable arity and potentially a different variant.</span>
     <span class="kw">fn</span> <span class="ident">arity</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Arity</span>;
 }
-<span class="doccomment">/// Represents the arity of a [Variant].</span>
+
+<span class="doccomment">/// A [Variant] which requires a context for meet operations and equality checks.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// See [Variant] for general information and requirements on the implementation.</span>
+<span class="doccomment">/// The context will ever only be borrowed without further requirements on it, in particular,</span>
+<span class="doccomment">/// it does not have to implement [Clone].</span>
+<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">ContextSensitiveVariant</span>: <span class="ident">Sized</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Debug</span> {
+    <span class="doccomment">/// Result of a meet of two incompatible type, i.e., it represents a type contradiction.</span>
+    <span class="doccomment">/// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.</span>
+    <span class="kw">type</span> <span class="prelude-val">Err</span>: <span class="ident">Debug</span>;
+
+    <span class="doccomment">/// Represents the meet- and equality context.</span>
+    <span class="kw">type</span> <span class="ident">Context</span>: <span class="ident">Debug</span>;
+
+    <span class="doccomment">/// Returns the unconstrained, most abstract type.</span>
+    <span class="kw">fn</span> <span class="ident">top</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span>;
+
+    <span class="doccomment">/// Attempts to meet two variants respecting their currently-determined potentially variable arity.</span>
+    <span class="doccomment">/// Refer to [Variant] for the responsibilities of this function.</span>
+    <span class="doccomment">/// In particular: `usize::max(lhs.least_arity, rhs.least_arity) &lt;= result.least_arity`</span>
+    <span class="doccomment">/// In the successful case, the variant and arity of the partial have to match, i.e., if the [Arity]</span>
+    <span class="doccomment">/// is fixed with value `n`, then [Partial::least_arity] needs to be `n` as well.</span>
+    <span class="kw">fn</span> <span class="ident">meet</span>(<span class="ident">lhs</span>: <span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="ident">rhs</span>: <span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>::<span class="ident">Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="self">Self</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span>;
+
+    <span class="doccomment">/// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.</span>
+    <span class="doccomment">/// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.</span>
+    <span class="doccomment">/// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,</span>
+    <span class="doccomment">/// the tuple has a variable arity and potentially a different variant.</span>
+    <span class="kw">fn</span> <span class="ident">arity</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>::<span class="ident">Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Arity</span>;
+
+    <span class="doccomment">/// Context-sensitive version of [Eq].  All rules apply.</span>
+    <span class="kw">fn</span> <span class="ident">equal</span>(<span class="ident">this</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>, <span class="ident">that</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>, <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>::<span class="ident">Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span>;
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Variant</span><span class="op">&gt;</span> <span class="ident">ContextSensitiveVariant</span> <span class="kw">for</span> <span class="ident">V</span> {
+    <span class="kw">type</span> <span class="prelude-val">Err</span> <span class="op">=</span> <span class="ident">V</span>::<span class="prelude-val">Err</span>;
+
+    <span class="kw">type</span> <span class="ident">Context</span> <span class="op">=</span> ();
+
+    <span class="kw">fn</span> <span class="ident">top</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="ident">V</span>::<span class="ident">top</span>()
+    }
+
+    <span class="kw">fn</span> <span class="ident">meet</span>(<span class="ident">lhs</span>: <span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="ident">rhs</span>: <span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="ident">_ctx</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>::<span class="ident">Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Partial</span><span class="op">&lt;</span><span class="self">Self</span><span class="op">&gt;</span>, <span class="self">Self</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span> {
+        <span class="ident">V</span>::<span class="ident">meet</span>(<span class="ident">lhs</span>, <span class="ident">rhs</span>)
+    }
+
+    <span class="kw">fn</span> <span class="ident">arity</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">_ctx</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>::<span class="ident">Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">Arity</span> {
+        <span class="self">self</span>.<span class="ident">arity</span>()
+    }
+
+    <span class="kw">fn</span> <span class="ident">equal</span>(<span class="ident">this</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>, <span class="ident">that</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>, <span class="ident">_ctx</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>::<span class="ident">Context</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
+        <span class="ident">this</span> <span class="op">=</span><span class="op">=</span> <span class="ident">that</span>
+    }
+}
+
+<span class="doccomment">/// Represents the arity of a [Variant] or [ContextSensitiveVariant].</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">Copy</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Arity</span> {
     <span class="doccomment">/// The arity is variable, i.e., it does not have a specific value.</span>
@@ -204,6 +315,7 @@
 }
 
 <span class="kw">impl</span> <span class="ident">Arity</span> {
+    <span class="doccomment">/// Transform `self` into an option, i.e., it will yield a `Some` with its arity if defined and `None` otherwise.</span>
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">to_opt</span>(<span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span> {
             <span class="ident">Arity</span>::<span class="ident">Variable</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
@@ -212,12 +324,12 @@
     }
 }
 
-<span class="doccomment">/// Partial is a container for a [Variant] and the least arity a particular instance of this variant currently has. Only used for [Variant::meet()].</span>
+<span class="doccomment">/// Partial is a container for a [ContextSensitiveVariant] and the least arity a particular instance of this variant currently has. Only used for [ContextSensitiveVariant::meet()].</span>
 <span class="doccomment">///</span>
 <span class="doccomment">/// The `least_arity` indicates how many children this instance of the variance has according to the current state of the type checker.</span>
 <span class="doccomment">/// The value might increase in the future but never decrease.</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Partial</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Variant</span><span class="op">&gt;</span> {
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Partial</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Sized</span><span class="op">&gt;</span> {
     <span class="doccomment">/// The variant represented by this `Partial`.</span>
     <span class="kw">pub</span> <span class="ident">variant</span>: <span class="ident">V</span>,
     <span class="doccomment">///The least number of children the variant will have after completing the type check.</span>
@@ -226,25 +338,26 @@
 
 <span class="doccomment">/// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Preliminary</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">Variant</span><span class="op">&gt;</span> {
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Preliminary</span><span class="op">&lt;</span><span class="ident">V</span>: <span class="ident">ContextSensitiveVariant</span><span class="op">&gt;</span> {
     <span class="doccomment">/// The type variant of the entity represented by this `Preliminary`.</span>
     <span class="kw">pub</span> <span class="ident">variant</span>: <span class="ident">V</span>,
     <span class="doccomment">/// The [TcKey]s of the children of this variant.</span>
     <span class="kw">pub</span> <span class="ident">children</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">TcKey</span><span class="op">&gt;</span><span class="op">&gt;</span>,
 }
 
-<span class="doccomment">/// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [Variant] does not implement [Constructable].</span>
+<span class="doccomment">/// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [ContextSensitiveVariant] does not implement [Constructable].</span>
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">PreliminaryTypeTable</span><span class="op">&lt;</span><span class="ident">V</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">TcKey</span>, <span class="ident">Preliminary</span><span class="op">&lt;</span><span class="ident">V</span><span class="op">&gt;</span><span class="op">&gt;</span>;
-<span class="doccomment">/// A type table containing the constructed type of the inferred [Variant] for each [TcKey].  Requires [Variant] to implement [Constructable].</span>
+<span class="doccomment">/// A type table containing the constructed type of the inferred [ContextSensitiveVariant] for each [TcKey].  Requires [ContextSensitiveVariant] to implement [Constructable].</span>
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">TypeTable</span><span class="op">&lt;</span><span class="ident">V</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">TcKey</span>, <span class="op">&lt;</span><span class="ident">V</span> <span class="kw">as</span> <span class="ident">Constructable</span><span class="op">&gt;</span>::<span class="ident">Type</span><span class="op">&gt;</span>;
 
 <span class="doccomment">/// A type implementing this trait can potentially be transformed into a concrete representation. This transformation can fail.</span>
-<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">Constructable</span>: <span class="ident">Variant</span> {
+<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">Constructable</span>: <span class="ident">ContextSensitiveVariant</span> {
     <span class="doccomment">/// The result type of the attempted construction.</span>
     <span class="kw">type</span> <span class="ident">Type</span>: <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Debug</span>;
     <span class="doccomment">/// Attempts to transform `self` into an more concrete `Self::Type`.</span>
-    <span class="doccomment">/// Returns a [Variant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.</span>
-    <span class="kw">fn</span> <span class="ident">construct</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">children</span>: <span class="kw-2">&amp;</span>[<span class="self">Self</span>::<span class="ident">Type</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>::<span class="ident">Type</span>, <span class="op">&lt;</span><span class="self">Self</span> <span class="kw">as</span> <span class="ident">Variant</span><span class="op">&gt;</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span>;
+    <span class="doccomment">/// Returns a [ContextSensitiveVariant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.</span>
+    <span class="kw">fn</span> <span class="ident">construct</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">children</span>: <span class="kw-2">&amp;</span>[<span class="self">Self</span>::<span class="ident">Type</span>]) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>::<span class="ident">Type</span>, <span class="op">&lt;</span><span class="self">Self</span> <span class="kw">as</span> <span class="ident">ContextSensitiveVariant</span><span class="op">&gt;</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span>;
 }
 </pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "rusttyc";</script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="rusttyc"></div>
+    <script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

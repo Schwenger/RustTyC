@@ -1,3 +1,3 @@
 (function() {var implementors = {};
-implementors["rusttyc"] = [{"text":"impl Copy for TcKey","synthetic":false,"types":[]},{"text":"impl Copy for Arity","synthetic":false,"types":[]}];
+implementors["rusttyc"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"struct\" href=\"rusttyc/struct.TcKey.html\" title=\"struct rusttyc::TcKey\">TcKey</a>","synthetic":false,"types":["rusttyc::keys::TcKey"]},{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"enum\" href=\"rusttyc/types/enum.Arity.html\" title=\"enum rusttyc::types::Arity\">Arity</a>","synthetic":false,"types":["rusttyc::types::Arity"]}];
 if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

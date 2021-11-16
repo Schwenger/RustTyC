@@ -1,3 +1,3 @@
 (function() {var implementors = {};
-implementors["rusttyc"] = [{"text":"impl PartialOrd&lt;TcKey&gt; for TcKey","synthetic":false,"types":[]}];
+implementors["rusttyc"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/cmp/trait.PartialOrd.html\" title=\"trait core::cmp::PartialOrd\">PartialOrd</a>&lt;<a class=\"struct\" href=\"rusttyc/struct.TcKey.html\" title=\"struct rusttyc::TcKey\">TcKey</a>&gt; for <a class=\"struct\" href=\"rusttyc/struct.TcKey.html\" title=\"struct rusttyc::TcKey\">TcKey</a>","synthetic":false,"types":["rusttyc::keys::TcKey"]}];
 if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

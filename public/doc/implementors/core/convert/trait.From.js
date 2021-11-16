@@ -1,3 +1,0 @@
-(function() {var implementors = {};
-implementors["rusttyc"] = [{"text":"impl&lt;AbsTy:&nbsp;Abstract&gt; From&lt;HashMap&lt;TcKey, AbsTy, RandomState&gt;&gt; for AbstractTypeTable&lt;AbsTy&gt;","synthetic":false,"types":[]},{"text":"impl&lt;Concrete&gt; From&lt;HashMap&lt;TcKey, Concrete, RandomState&gt;&gt; for ReifiedTypeTable&lt;Concrete&gt;","synthetic":false,"types":[]}];
-if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
