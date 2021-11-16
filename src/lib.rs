@@ -5,7 +5,8 @@
 //! [TcKey] provides a set of functions generating constraints such as 'the type behind key a is more concrete than the type behind key b'
 //! or 'type X is an upper bound of the type behind key a'.
 //!
-//! The user needs to supply a type lattice by implementing the [Variant] trait.
+//! The user needs to supply a type lattice by implementing the [Variant] or [ContextSensitiveVariant] trait.  The following documentation
+//! uses both traits interchangeably whenever possible without ambiguity.
 //!
 //! Then, iterate over your data structure, e.g. your abstract syntax tree, generate keys for terms and variables, and impose constraints
 //! on the keys.
@@ -100,4 +101,6 @@ pub mod types;
 
 pub use keys::TcKey;
 pub use type_checker::{TcErr, TcVar, TypeChecker, VarlessTypeChecker};
-pub use types::{Arity, Constructable, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant};
+pub use types::{
+    Arity, Constructable, ContextSensitiveVariant, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant,
+};

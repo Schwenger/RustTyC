@@ -42,6 +42,10 @@ use crate::TcKey;
 /// # Example
 /// For a full example of an abstract type system, refer to the [crate documentation](../index.html) and the examples.
 ///
+/// # Context
+/// If the variant requires a context for the meet and/or equality operation, refer to [ContextSensitiveVariant].
+/// Each [Variant] automatically implements [ContextSensitiveVariant].
+///
 pub trait Variant: Sized + Clone + Debug + Eq {
     /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
     /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
@@ -64,13 +68,18 @@ pub trait Variant: Sized + Clone + Debug + Eq {
     fn arity(&self) -> Arity;
 }
 
-/// TODO
+/// A [Variant] which requires a context for meet operations and equality checks.
+///
+/// See [Variant] for general information and requirements on the implementation.
+/// The context will ever only be borrowed without further requirements on it, in particular,
+/// it does not have to implement [Clone].
 pub trait ContextSensitiveVariant: Sized + Clone + Debug {
     /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
     /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
     type Err: Debug;
-    /// TODO
-    type Context: Debug + Clone;
+
+    /// Represents the meet- and equality context.
+    type Context: Debug;
 
     /// Returns the unconstrained, most abstract type.
     fn top() -> Self;
@@ -88,7 +97,7 @@ pub trait ContextSensitiveVariant: Sized + Clone + Debug {
     /// the tuple has a variable arity and potentially a different variant.
     fn arity(&self, ctx: &Self::Context) -> Arity;
 
-    /// TODO
+    /// Context-sensitive version of [Eq].  All rules apply.
     fn equal(this: &Self, that: &Self, ctx: &Self::Context) -> bool;
 }
 
@@ -114,7 +123,7 @@ impl<V: Variant> ContextSensitiveVariant for V {
     }
 }
 
-/// Represents the arity of a [ContextSensitiveVariant].
+/// Represents the arity of a [Variant] or [ContextSensitiveVariant].
 #[derive(Debug, Clone, Copy)]
 pub enum Arity {
     /// The arity is variable, i.e., it does not have a specific value.
@@ -124,6 +133,7 @@ pub enum Arity {
 }
 
 impl Arity {
+    /// Transform `self` into an option, i.e., it will yield a `Some` with its arity if defined and `None` otherwise.
     pub(crate) fn to_opt(self) -> Option<usize> {
         match self {
             Arity::Variable => None,
