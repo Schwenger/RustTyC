@@ -4,7 +4,7 @@ use crate::{
     keys::{Constraint, TcKey},
     types::Preliminary,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -202,6 +202,19 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
     ChildAccessOutOfBound(TcKey, V, usize),
+    /// This error occurs when a constraint accesses the child with the given name of a type and its variant turns out to
+    /// not know this child.
+    /// Contains the affected key, its inferred or explicitly assigned variant, and the name of the child that
+    /// was attempted to be accessed.
+    FieldDoesNotExist(TcKey, V, HashSet<String>),
+    /// Attempted an named access to a child on a type that has indexed children.
+    /// Contains the affected key, its inferred or explicitly assigned variant, and the name of the child that
+    /// was attempted to be accessed.
+    FieldAccessOnIndexedTyped(TcKey, V, HashSet<String>),
+    /// Attempted an indexed access to a child on a type that has named children.
+    /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
+    /// was attempted to be accessed.
+    IndexedAccessOnNamedType(TcKey, V, usize),
     /// This error occurs if the type checker inferred a specific arity but the variant reports a fixed arity that is lower than the inferred one.
     ArityMismatch {
         /// The key for which the mismatch was detected.
@@ -213,6 +226,19 @@ pub enum TcErr<V: ContextSensitiveVariant> {
         /// The arity required according to the meet operation that created the variant.
         reported_arity: usize,
     },
+    /// This error occurs if the type checker inferred a specific set of fields but the variant reports a fixed set of fields that is different than the inferred one.
+    FieldMismatch {
+        /// The key for which the mismatch was detected.
+        key: TcKey,
+        /// The variant with fixed arity.
+        variant: V,
+        /// The least required fields according to the type check procedure.
+        inferred_fields: HashSet<String>,
+        /// The fields required according to the meet operation that created the variant.
+        reported_fields: HashSet<String>,
+    },
+    /// The access kind of the types children did not match during a meet.
+    ChildKindMismatch(TcKey, V, TcKey, V),
     /// An error reporting a failed type construction.  Contains the affected key, the preliminary result for which the construction failed, and the
     /// error reported by the construction.
     Construction(TcKey, Preliminary<V>, V::Err),

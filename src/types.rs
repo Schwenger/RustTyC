@@ -8,6 +8,7 @@
 use std::{collections::HashMap, fmt::Debug};
 
 use crate::TcKey;
+use std::collections::HashSet;
 
 /// A variant that will be inferred during the type checking procedure.
 ///
@@ -124,12 +125,14 @@ impl<V: Variant> ContextSensitiveVariant for V {
 }
 
 /// Represents the arity of a [Variant] or [ContextSensitiveVariant].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Arity {
     /// The arity is variable, i.e., it does not have a specific value.
     Variable,
     /// The arity has a fixed value.
-    Fixed(usize),
+    FixedIndexed(usize),
+    /// The arity has a fixed set of names.
+    FixedNamed(HashSet<String>),
 }
 
 impl Arity {
@@ -137,7 +140,42 @@ impl Arity {
     pub(crate) fn to_opt(self) -> Option<usize> {
         match self {
             Arity::Variable => None,
-            Arity::Fixed(n) => Some(n),
+            Arity::FixedIndexed(n) => Some(n),
+            Arity::FixedNamed(s) => Some(s.len()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ChildrenConstraint {
+    None,
+    ///Children are accessed through indices.
+    Indexed(usize),
+    ///Children are accessed by name.
+    Named(HashSet<String>),
+}
+
+impl ChildrenConstraint {
+    ///The least number of children there are
+    pub fn len(&self) -> usize {
+        match self {
+            ChildrenConstraint::None => 0,
+            ChildrenConstraint::Indexed(size) => *size,
+            ChildrenConstraint::Named(set) => set.len(),
+        }
+    }
+
+    pub fn names(&self) -> &HashSet<String> {
+        match self {
+            ChildrenConstraint::Named(set) => set,
+            ChildrenConstraint::Indexed(_) | ChildrenConstraint::None => panic!("Child constraint is not named"),
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        match self {
+            ChildrenConstraint::Indexed(idx) => *idx,
+            ChildrenConstraint::Named(_) | ChildrenConstraint::None => panic!("Child constraint is not named"),
         }
     }
 }
@@ -150,8 +188,75 @@ impl Arity {
 pub struct Partial<V: Sized> {
     /// The variant represented by this `Partial`.
     pub variant: V,
-    ///The least number of children the variant will have after completing the type check.
-    pub least_arity: usize,
+    ///The least requirement for children.
+    pub children: ChildrenConstraint,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Children {
+    Unknown,
+    Indexed(Vec<Option<TcKey>>),
+    Named(HashMap<String, Option<TcKey>>),
+}
+
+impl Children {
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Children::Unknown => 0,
+            Children::Indexed(c) => c.len(),
+            Children::Named(c) => c.len(),
+        }
+    }
+
+    pub(crate) fn is_indexed(&self) -> bool {
+        match self {
+            Children::Indexed(_) => true,
+            Children::Unknown | Children::Named(_) => false,
+        }
+    }
+
+    pub(crate) fn is_named(&self) -> bool {
+        match self {
+            Children::Named(res) => true,
+            Children::Unknown | Children::Indexed(_) => false,
+        }
+    }
+
+    pub(crate) fn indexed(&self) -> &Vec<Option<TcKey>> {
+        match self {
+            Children::Indexed(res) => res,
+            Children::Unknown | Children::Named(_) => panic!("children are not indexed."),
+        }
+    }
+
+    pub(crate) fn indexed_mut(&mut self) -> &mut Vec<Option<TcKey>> {
+        match self {
+            Children::Indexed(res) => res,
+            Children::Unknown | Children::Named(_) => panic!("children are not indexed."),
+        }
+    }
+
+    pub(crate) fn named(&self) -> &HashMap<String, Option<TcKey>> {
+        match self {
+            Children::Named(res) => res,
+            Children::Unknown | Children::Indexed(_) => panic!("children are not named."),
+        }
+    }
+
+    pub(crate) fn named_mut(&mut self) -> &mut HashMap<String, Option<TcKey>> {
+        match self {
+            Children::Named(res) => res,
+            Children::Unknown | Children::Indexed(_) => panic!("children are not named."),
+        }
+    }
+
+    pub(crate) fn to_constraint(self) -> ChildrenConstraint {
+        match self {
+            Children::Unknown => ChildrenConstraint::None,
+            Children::Indexed(c) => ChildrenConstraint::Indexed(c.len()),
+            Children::Named(c) => ChildrenConstraint::Named(c.keys().cloned().collect()),
+        }
+    }
 }
 
 /// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].
@@ -160,7 +265,7 @@ pub struct Preliminary<V: ContextSensitiveVariant> {
     /// The type variant of the entity represented by this `Preliminary`.
     pub variant: V,
     /// The [TcKey]s of the children of this variant.
-    pub children: Vec<Option<TcKey>>,
+    pub children: Children,
 }
 
 /// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [ContextSensitiveVariant] does not implement [Constructable].
@@ -175,4 +280,9 @@ pub trait Constructable: ContextSensitiveVariant {
     /// Attempts to transform `self` into an more concrete `Self::Type`.
     /// Returns a [ContextSensitiveVariant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
     fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err>;
+
+    fn construct_named(
+        &self,
+        children: HashMap<String, Self::Type>,
+    ) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err>;
 }
