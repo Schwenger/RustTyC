@@ -1,9 +1,10 @@
-use crate::types::{Children, ChildrenConstraint};
+use crate::types::{ChildConstraint, Children, ResolvedChildren};
 use crate::{
     types::{Arity, Constructable, ContextSensitiveVariant, Partial, Preliminary, PreliminaryTypeTable, TypeTable},
     TcErr, TcKey,
 };
 use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ConstraintGraph<T: ContextSensitiveVariant> {
@@ -84,83 +85,99 @@ impl<V: ContextSensitiveVariant> Type<V> {
     fn apply_child_constraint_checked(
         &mut self,
         this: TcKey,
-        constraint: ChildrenConstraint,
+        constraint: ChildConstraint,
         ctx: &V::Context,
     ) -> Result<(), TcErr<V>> {
-        match (&self.variant.arity(ctx), &mut self.children, constraint) {
-            (Arity::FixedIndexed(given_arity), _, ChildrenConstraint::Indexed(new_arity))
-                if new_arity > *given_arity =>
-            {
+        match (&self.variant.arity(ctx), constraint) {
+            (Arity::FixedIndexed(given_arity), ChildConstraint::Indexed(new_arity)) if new_arity > *given_arity => {
                 return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity))
             }
-            (Arity::FixedIndexed(given_arity), Children::Indexed(children), ChildrenConstraint::Indexed(_)) => {
-                ConstraintGraph::<V>::fill_with(children, None, *given_arity)
-            }
-            (Arity::Variable, Children::Indexed(children), ChildrenConstraint::Indexed(new_arity)) => {
-                ConstraintGraph::<V>::fill_with(children, None, new_arity)
-            }
-            (Arity::FixedNamed(target), _, ChildrenConstraint::Named(new)) if !new.is_subset(&target) => {
+            (Arity::FixedIndexed(given_arity), ChildConstraint::Indexed(_)) => match &mut self.children {
+                Children::Unknown => self.children = Children::Indexed(vec![None; *given_arity]),
+                Children::Indexed(children) => ConstraintGraph::<V>::fill_with(children, None, *given_arity),
+                Children::Named(_) => unreachable!("Mismatch between arity type and children"),
+            },
+            (Arity::Variable, ChildConstraint::Indexed(new_arity)) => match &mut self.children {
+                Children::Unknown => self.children = Children::Indexed(vec![None; new_arity]),
+                Children::Indexed(children) => ConstraintGraph::<V>::fill_with(children, None, new_arity),
+                Children::Named(_) => unreachable!("Mismatch between arity kind and children"),
+            },
+            (Arity::FixedNamed(target), ChildConstraint::Named(new)) if !new.is_subset(target) => {
                 return Err(TcErr::FieldDoesNotExist(
                     this,
                     self.variant.clone(),
-                    new.difference(&target).cloned().collect(),
+                    new.difference(target).cloned().collect(),
                 ))
             }
-            (Arity::FixedNamed(target), Children::Named(current), ChildrenConstraint::Named(_)) => {
-                for key in target {
-                    current.insert(key.clone(), None);
+            (Arity::FixedNamed(target), ChildConstraint::Named(_)) => match &mut self.children {
+                Children::Unknown => {
+                    self.children = Children::Named(HashMap::from_iter(target.iter().map(|k| (k.clone(), None))))
                 }
-            }
-            (Arity::FixedIndexed(_), Children::Named(_), _)
-            | (Arity::FixedNamed(_), Children::Indexed(_), _)
-            | (Arity::Variable, Children::Named(_), _) => {
-                unreachable!("Children of type do not match given arity");
-            }
-            (Arity::Variable, _, ChildrenConstraint::Named(_)) => {
+                Children::Named(names) => {
+                    names.extend(target.difference(&names.keys().cloned().collect()).cloned().map(|k| (k, None)))
+                }
+                Children::Indexed(_) => unreachable!("Mismatch between arity kind and children"),
+            },
+            (Arity::Variable, ChildConstraint::Named(_)) => {
                 unimplemented!("Variable sized structs are not supported yet")
             }
-            (Arity::FixedNamed(_), _, ChildrenConstraint::Indexed(idx)) => {
+            (Arity::FixedNamed(_), ChildConstraint::Indexed(idx)) => {
                 return Err(TcErr::IndexedAccessOnNamedType(this, self.variant.clone(), idx));
             }
-            (Arity::FixedIndexed(_), _, ChildrenConstraint::Named(name)) => {
+            (Arity::FixedIndexed(_), ChildConstraint::Named(name)) => {
                 return Err(TcErr::FieldAccessOnIndexedTyped(this, self.variant.clone(), name));
+            }
+            (_, ChildConstraint::Unconstrained) => {
+                todo!()
             }
         }
         Ok(())
     }
 
-    fn apply_child_constraint_unchecked(&mut self, constraint: ChildrenConstraint) {
+    fn apply_child_constraint_unchecked(&mut self, constraint: ChildConstraint) {
         match constraint {
-            ChildrenConstraint::Indexed(idx) => ConstraintGraph::<V>::fill_with(self.children.indexed_mut(), None, idx),
-            ChildrenConstraint::Named(names) => self.children.named_mut().extend(
-                names.difference(&self.children.named().keys().cloned().collect::<HashSet<_>>()).cloned().map(|k| (k, None)),
-            ),
-            ChildrenConstraint::None => {}
+            ChildConstraint::Indexed(idx) => match &mut self.children {
+                Children::Unknown => self.children = Children::Indexed(vec![None; idx]),
+                Children::Indexed(children) => ConstraintGraph::<V>::fill_with(children, None, idx),
+                Children::Named(_) => unreachable!("Mismatch between arity type and children"),
+            },
+            ChildConstraint::Named(target) => match &mut self.children {
+                Children::Unknown => {
+                    self.children = Children::Named(HashMap::from_iter(target.iter().map(|k| (k.clone(), None))))
+                }
+                Children::Named(names) => {
+                    names.extend(target.difference(&names.keys().cloned().collect()).cloned().map(|k| (k, None)))
+                }
+                Children::Indexed(_) => unreachable!("Mismatch between arity kind and children"),
+            },
+            ChildConstraint::Unconstrained => {
+                todo!()
+            }
         }
     }
 
     fn child_indexed(&self, idx: usize) -> Option<TcKey> {
         debug_assert!(self.children.is_indexed());
         debug_assert!(self.children.len() > idx);
-        self.children.indexed()[idx]
+        self.children.indexed().unwrap()[idx]
     }
 
     fn child_named(&self, name: String) -> Option<TcKey> {
         debug_assert!(self.children.is_named());
-        debug_assert!(self.children.named().contains_key(&name));
-        self.children.named()[&name]
+        debug_assert!(self.children.named().unwrap().contains_key(&name));
+        self.children.named().unwrap()[&name]
     }
 
     fn set_child_indexed(&mut self, n: usize, child: TcKey) {
         debug_assert!(self.children.is_indexed());
         debug_assert!(self.children.len() > n);
-        self.children.indexed_mut()[n] = Some(child);
+        self.children.indexed_mut().unwrap()[n] = Some(child);
     }
 
     fn set_child_named(&mut self, n: String, child: TcKey) {
         debug_assert!(self.children.is_named());
-        debug_assert!(self.children.named().contains_key(&n));
-        self.children.named_mut()[&n] = Some(child);
+        debug_assert!(self.children.named().unwrap().contains_key(&n));
+        let _ = self.children.named_mut().unwrap().insert(n, Some(child));
     }
 
     fn add_upper_bound(&mut self, bound: TcKey) {
@@ -177,6 +194,7 @@ impl<V: ContextSensitiveVariant> Type<V> {
         // TODO: Extremely inefficient; improve.
         let lhs = self;
         let mut is_indexed = true;
+        let mut no_children = false;
 
         match (&lhs.children, &rhs.children) {
             (Children::Indexed(_), Children::Named(_)) | (Children::Named(_), Children::Indexed(_)) => {
@@ -205,7 +223,13 @@ impl<V: ContextSensitiveVariant> Type<V> {
                     }
                 }
             }
-            _ => {}
+            (Children::Named(_), Children::Unknown) | (Children::Unknown, Children::Named(_)) => {
+                is_indexed = false;
+            }
+            (Children::Indexed(_), Children::Unknown) | (Children::Unknown, Children::Indexed(_)) => {}
+            (Children::Unknown, Children::Unknown) => {
+                no_children = true;
+            }
         }
 
         // let left_arity = lhs.children.len();
@@ -214,34 +238,45 @@ impl<V: ContextSensitiveVariant> Type<V> {
         // debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == left_arity).unwrap_or(true));
         // debug_assert!(rhs.variant.arity(ctx).to_opt().map(|a| a == right_arity).unwrap_or(true));
 
-        // println!("Meeting {:?} and {:?}.", lhs, rhs);
+        println!("Meeting {:?} and {:?}.", lhs, rhs);
 
         let left = Partial { variant: lhs.variant.clone(), children: lhs.children.to_constraint() };
         let right = Partial { variant: rhs.variant.clone(), children: rhs.children.to_constraint() };
         let Partial { variant: new_variant, children: new_constraint } =
             ContextSensitiveVariant::meet(left, right, ctx).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
 
-        let (mut equates, new_children): (OptEquateObligation, Children) = if is_indexed {
+        let (mut equates, new_children): (OptEquateObligation, Children) = if no_children {
+            (vec![], Children::Unknown)
+        } else if is_indexed {
             // Make child arrays same length.
-            ConstraintGraph::<V>::fill_with(&mut lhs.children.indexed_mut(), None, rhs.children.len()); // Will be checked later.
-            let (mut equates, new_children) = lhs
+            ConstraintGraph::<V>::fill_with(
+                lhs.children.indexed_mut().expect("children to be indexed"),
+                None,
+                rhs.children.len(),
+            ); // Will be checked later.
+            let (equates, new_children) = lhs
                 .children
                 .indexed()
+                .unwrap_or(&vec![])
                 .iter()
-                .zip(rhs.children.indexed().iter().chain(std::iter::repeat(&None)))
-                .map(|(a, b)| (a.zip(*b), a.or(*b)))
+                .zip(rhs.children.indexed().unwrap_or(&vec![]).iter().chain(std::iter::repeat(&None)))
+                .map(|(a, b)| ((*a).zip(*b), (*a).or(*b)))
                 .unzip();
             (equates, Children::Indexed(new_children))
         } else {
-            let children_l = lhs.children.named();
-            let children_r = rhs.children.named();
-            let (mut equates, new_children) = children_l
+            let empty_map = HashMap::new();
+            let children_l = lhs.children.named().unwrap_or(&empty_map);
+            let children_r = rhs.children.named().unwrap_or(&empty_map);
+            let (equates, new_children) = children_l
                 .keys()
                 .chain(children_r.keys())
                 .map(|k| {
                     (
                         children_l.get(k).cloned().flatten().zip(children_r.get(k).cloned().flatten()),
-                        (k.clone(), children_l.get(k).cloned().flatten().or(children_r.get(k).cloned().flatten())),
+                        (
+                            k.clone(),
+                            children_l.get(k).cloned().flatten().or_else(|| children_r.get(k).cloned().flatten()),
+                        ),
                     )
                 })
                 .unzip();
@@ -256,7 +291,7 @@ impl<V: ContextSensitiveVariant> Type<V> {
         lhs.upper_bounds.extend(rhs.upper_bounds.iter());
         lhs.apply_child_constraint_checked(target_key, new_constraint, ctx)?;
 
-        // println!("Result: {:?}", lhs);
+        println!("Result: {:?}", lhs);
 
         debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == lhs.children.len()).unwrap_or(true));
 
@@ -300,11 +335,18 @@ impl<V: ContextSensitiveVariant> Type<V> {
                     constraint.names(),
                     "meet of two variants yielded fixed-named variant that did not match required named."
                 );
-                if !names.is_subset(&self.children.named().keys().cloned().collect()) {
+                let keys = self
+                    .children
+                    .named()
+                    .expect("meet of two variants yielded fixed-named variant that did not match its children.")
+                    .keys()
+                    .cloned()
+                    .collect();
+                if !names.is_subset(&keys) {
                     return Err(TcErr::FieldMismatch {
                         key: this,
                         variant,
-                        inferred_fields: self.children.named().keys().cloned().collect(),
+                        inferred_fields: keys,
                         reported_fields: names,
                     });
                 }
@@ -357,13 +399,33 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
     pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize, context: &T::Context) -> Result<TcKey, TcErr<T>> {
         let parent_v = self.repr_mut(parent);
-        parent_v.ty.apply_child_constraint_checked(parent, ChildrenConstraint::Indexed(n + 1), context)?; // n is an index, we want an arity of n+1
-        let nth_child = parent_v.ty.child(n);
+        parent_v.ty.apply_child_constraint_checked(parent, ChildConstraint::Indexed(n + 1), context)?; // n is an index, we want an arity of n+1
+        let nth_child = parent_v.ty.child_indexed(n);
         if let Some(child) = nth_child {
             return Ok(child);
         }
         let child_key = self.create_vertex();
-        self.repr_mut(parent).ty.set_child(n, child_key);
+        self.repr_mut(parent).ty.set_child_indexed(n, child_key);
+        Ok(child_key)
+    }
+
+    /// Registers that a key has at least this child.  If this fact was already known and thus a key is already associated with the child,
+    /// the key is returned without calling the `keygen` function.  Otherwise, `keygen` generates a new key which will be added to the graph regularly,
+    /// associated with the child, and returned.
+    /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
+    pub(crate) fn named_child(&mut self, parent: TcKey, name: String, context: &T::Context) -> Result<TcKey, TcErr<T>> {
+        let parent_v = self.repr_mut(parent);
+        parent_v.ty.apply_child_constraint_checked(
+            parent,
+            ChildConstraint::Named(HashSet::from([name.clone()])),
+            context,
+        )?; // n is an index, we want an arity of n+1
+        let child = parent_v.ty.child_named(name.clone());
+        if let Some(child) = child {
+            return Ok(child);
+        }
+        let child_key = self.create_vertex();
+        self.repr_mut(parent).ty.set_child_named(name, child_key);
         Ok(child_key)
     }
 
@@ -412,7 +474,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
         Ok(())
     }
 
-    pub(crate) fn lift(&mut self, variant: T, children: Vec<Option<TcKey>>) -> TcKey {
+    pub(crate) fn lift(&mut self, variant: T, children: Children) -> TcKey {
         let v = self.new_vertex().mut_full();
         v.ty.variant = variant;
         v.ty.children = children;
@@ -422,8 +484,8 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     fn add_explicit_bound(&mut self, target: TcKey, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
         let target_v = self.repr_mut(target);
         let lhs = target_v.ty.to_partial();
-        let rhs_arity = bound.arity(context).to_opt().unwrap_or(0);
-        let rhs = Partial { variant: bound, least_arity: rhs_arity };
+        let rhs_arity = bound.arity(context);
+        let rhs = Partial { variant: bound, children: rhs_arity.into() };
         let meet = T::meet(lhs, rhs, context).map_err(|e| TcErr::Bound(target, None, e))?;
         target_v.ty.with_partial(target, meet, context)
     }
@@ -537,13 +599,13 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
         match *vertex {
             Vertex::Fwd { this, repr } => {
                 if history.contains(&this) {
-                    return true;
+                    true
                 } else {
                     history.push(this);
-                    return self.is_in_loop(self.vertex(repr), history);
+                    self.is_in_loop(self.vertex(repr), history)
                 }
             }
-            Vertex::Repr(FullVertex { this, .. }) => return history.contains(&this),
+            Vertex::Repr(FullVertex { this, .. }) => history.contains(&this),
         }
     }
 }
@@ -566,24 +628,40 @@ where
             // println!("Open: {:?}", open.iter().map(|d| d.this).collect::<Vec<TcKey>>());
             let num_open = open.len();
             for v in open {
-                let children =
-                    v.ty.children
+                let children: Result<Option<ResolvedChildren<V::Type>>, TcErr<V>> = match &v.ty.children {
+                    Children::Unknown => Ok(Some(ResolvedChildren::None)),
+                    Children::Indexed(children) => children
                         .iter()
                         .enumerate()
                         .map(|(ix, c)| {
                             if let Some(key) = c {
                                 Ok(resolved.get(&self.repr(*key).this).cloned())
                             } else {
-                                V::construct(&V::top(), &Vec::new())
+                                V::construct(&V::top(), ResolvedChildren::None)
                                     .map(Some)
-                                    .map_err(|e| TcErr::ChildConstruction(v.this, ix, v.ty.to_preliminary(), e))
+                                    .map_err(|e| TcErr::IndexedChildConstruction(v.this, ix, v.ty.to_preliminary(), e))
                             }
                         })
-                        .collect::<Result<Option<Vec<V::Type>>, TcErr<V>>>()?;
-                if let Some(children) = children {
+                        .collect(),
+                    Children::Named(children) => children
+                        .iter()
+                        .map(|(name, c)| {
+                            if let Some(key) = c {
+                                Ok(resolved.get(&self.repr(*key).this).cloned().map(|t| (name.clone(), t)))
+                            } else {
+                                V::construct(&V::top(), ResolvedChildren::None)
+                                    .map(|t| Some((name.clone(), t)))
+                                    .map_err(|e| {
+                                        TcErr::NamedChildConstruction(v.this, name.clone(), v.ty.to_preliminary(), e)
+                                    })
+                            }
+                        })
+                        .collect(),
+                };
+                if let Some(children) = children? {
                     let ty =
                         v.ty.variant
-                            .construct(&children)
+                            .construct(children)
                             .map_err(|e| TcErr::Construction(v.this, v.ty.to_preliminary(), e))?;
                     let _ = resolved.insert(v.this, ty);
                 } else {

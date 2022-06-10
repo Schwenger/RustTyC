@@ -47,6 +47,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 /// Assume the following data structures exist:
 /// ```
 /// use rusttyc::{Variant, TcKey, TypeChecker, TcVar, TcErr, Partial, Arity};
+/// use rusttyc::types::ChildConstraint;
 ///
 /// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// enum MyVariant {
@@ -69,13 +70,13 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///             (UInt, x) | (x, UInt) => Ok(x),       // x can only be UInt or U8.
 ///             (U8, U8) => Ok(U8),
 ///         }?;
-///         Ok(Partial { variant, least_arity: 0 })
+///         Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
 ///     }
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
 ///     fn arity(&self) -> Arity {
-///         Arity::Fixed(0)
+///         Arity::FixedIndexed(0)
 ///     }
 /// }
 /// #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -100,6 +101,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///     type Err = String;
 ///     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
 ///         use MyVariant::*;
+/// use rusttyc::types::ChildConstraint;
 ///         let variant = match (lhs.variant, rhs.variant) {
 ///             (Top, x) | (x, Top) => Ok(x),
 ///             (String, String) => Ok(String),
@@ -108,13 +110,13 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///             (UInt, x) | (x, UInt) => Ok(x),       // x can only be UInt or U8.
 ///             (U8, U8) => Ok(U8),
 ///         }?;
-///         Ok(Partial { variant, least_arity: 0 })
+///         Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
 ///     }
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
 ///     fn arity(&self) -> Arity {
-///         Arity::Fixed(0)
+///         Arity::FixedIndexed(0)
 ///     }
 /// }
 /// #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
