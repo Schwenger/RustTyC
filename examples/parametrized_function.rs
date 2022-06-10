@@ -1,3 +1,4 @@
+use rusttyc::types::{ChildConstraint, ResolvedChildren};
 use rusttyc::{
     types::Arity, Constructable, Partial, TcErr, TcKey, TcVar, TypeChecker, Variant as TcVariant, VarlessTypeChecker,
 };
@@ -37,8 +38,8 @@ impl TcVariant for Variant {
 
     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
         use Variant::*;
-        assert_eq!(lhs.least_arity, 0, "spurious child");
-        assert_eq!(rhs.least_arity, 0, "spurious child");
+        assert_eq!(lhs.children.len(), 0, "spurious child");
+        assert_eq!(rhs.children.len(), 0, "spurious child");
         let variant = match (lhs.variant, rhs.variant) {
             (Any, other) | (other, Any) => Ok(other),
             (Integer(l), Integer(r)) => Ok(Integer(max(r, l))),
@@ -51,11 +52,11 @@ impl TcVariant for Variant {
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
             (Numeric, Numeric) => Ok(Numeric),
         }?;
-        Ok(Partial { variant, least_arity: 0 })
+        Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
     }
 
     fn arity(&self) -> Arity {
-        Arity::Fixed(0)
+        Arity::FixedIndexed(0)
     }
 }
 
@@ -99,8 +100,8 @@ enum Expression {
 impl Constructable for Variant {
     type Type = Type;
 
-    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, Self::Err> {
-        assert!(children.is_empty(), "spurious children");
+    fn construct(&self, children: ResolvedChildren<Type>) -> Result<Self::Type, Self::Err> {
+        assert!(matches!(children, ResolvedChildren::None), "spurious children");
         use Variant::*;
         match self {
             Any => Err("Cannot reify `Any`.".to_string()),
@@ -146,7 +147,6 @@ fn tc_expr(tc: &mut VarlessTypeChecker<Variant>, expr: &Expression) -> Result<Tc
             // would copy the keys rather than creating new ones.
             let params: Vec<(Option<Variant>, TcKey)> =
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
-            &params;
             for (arg_ty, arg_expr) in args {
                 let arg_key = tc_expr(tc, arg_expr)?;
                 match arg_ty {

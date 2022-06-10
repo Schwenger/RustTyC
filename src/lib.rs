@@ -38,18 +38,19 @@
 //! type MyTypeErr = String;
 //! impl Variant for MyVariant {
 //!     type Err = MyTypeErr;
-//!     fn arity(&self) -> Arity { Arity::Fixed(0) }
+//!     fn arity(&self) -> Arity { Arity::FixedIndexed(0) }
 //!     fn top() -> Self { MyVariant::Top }
 //!     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
-//!         assert_eq!(lhs.least_arity, 0);
-//!         assert_eq!(lhs.least_arity, 0);
+//!         use rusttyc::types::ChildConstraint;
+//! assert_eq!(lhs.children.len(), 0);
+//!         assert_eq!(lhs.children.len(), 0);
 //!         let variant = match (lhs.variant, rhs.variant) {
 //!             (MyVariant::Top, x) | (x, MyVariant::Top) => Ok(x),
 //!             (MyVariant::Boolean, MyVariant::Boolean) => Ok(MyVariant::Boolean),
 //!             (MyVariant::Integer(a), MyVariant::Integer(b)) => Ok(MyVariant::Integer(usize::max(a, b))),
 //!             (MyVariant::Boolean, MyVariant::Integer(_)) | (MyVariant::Integer(_), MyVariant::Boolean) => Err(String::from("Cannot combine Boolean and Integer")),
 //!         }?;
-//!         Ok(Partial { variant, least_arity: 0 })
+//!         Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
 //!     }
 //! }
 //! #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -78,8 +79,8 @@
 //! Check the RustTyC examples on github for more elaborate examples.
 //!     
 
+// Todo: re-add missing_docs
 #![deny(
-    missing_docs,
     missing_debug_implementations,
     missing_copy_implementations,
     trivial_casts,
@@ -88,7 +89,7 @@
     unstable_features,
     unused_import_braces,
     unused_qualifications,
-    broken_intra_doc_links,
+    rustdoc::broken_intra_doc_links,
     unused_results
 )]
 

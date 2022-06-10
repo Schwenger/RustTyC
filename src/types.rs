@@ -9,6 +9,7 @@ use std::{collections::HashMap, fmt::Debug};
 
 use crate::TcKey;
 use std::collections::HashSet;
+use std::iter::FromIterator;
 
 /// A variant that will be inferred during the type checking procedure.
 ///
@@ -137,45 +138,55 @@ pub enum Arity {
 
 impl Arity {
     /// Transform `self` into an option, i.e., it will yield a `Some` with its arity if defined and `None` otherwise.
-    pub(crate) fn to_opt(self) -> Option<usize> {
+    pub(crate) fn to_opt(&self) -> Option<usize> {
         match self {
             Arity::Variable => None,
-            Arity::FixedIndexed(n) => Some(n),
+            Arity::FixedIndexed(n) => Some(*n),
             Arity::FixedNamed(s) => Some(s.len()),
         }
     }
 }
 
+impl From<Arity> for ChildConstraint {
+    fn from(a: Arity) -> Self {
+        match a {
+            Arity::Variable => ChildConstraint::Unconstrained,
+            Arity::FixedIndexed(idx) => ChildConstraint::Indexed(idx),
+            Arity::FixedNamed(names) => ChildConstraint::Named(names),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub enum ChildrenConstraint {
-    None,
+pub enum ChildConstraint {
+    Unconstrained,
     ///Children are accessed through indices.
     Indexed(usize),
     ///Children are accessed by name.
     Named(HashSet<String>),
 }
 
-impl ChildrenConstraint {
+impl ChildConstraint {
     ///The least number of children there are
     pub fn len(&self) -> usize {
         match self {
-            ChildrenConstraint::None => 0,
-            ChildrenConstraint::Indexed(size) => *size,
-            ChildrenConstraint::Named(set) => set.len(),
+            ChildConstraint::Unconstrained => 0,
+            ChildConstraint::Indexed(size) => *size,
+            ChildConstraint::Named(set) => set.len(),
         }
     }
 
     pub fn names(&self) -> &HashSet<String> {
         match self {
-            ChildrenConstraint::Named(set) => set,
-            ChildrenConstraint::Indexed(_) | ChildrenConstraint::None => panic!("Child constraint is not named"),
+            ChildConstraint::Named(set) => set,
+            ChildConstraint::Indexed(_) | ChildConstraint::Unconstrained => panic!("Child constraint is not named"),
         }
     }
 
     pub fn index(&self) -> usize {
         match self {
-            ChildrenConstraint::Indexed(idx) => *idx,
-            ChildrenConstraint::Named(_) | ChildrenConstraint::None => panic!("Child constraint is not named"),
+            ChildConstraint::Indexed(idx) => *idx,
+            ChildConstraint::Named(_) | ChildConstraint::Unconstrained => panic!("Child constraint is not named"),
         }
     }
 }
@@ -189,7 +200,7 @@ pub struct Partial<V: Sized> {
     /// The variant represented by this `Partial`.
     pub variant: V,
     ///The least requirement for children.
-    pub children: ChildrenConstraint,
+    pub children: ChildConstraint,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -209,52 +220,54 @@ impl Children {
     }
 
     pub(crate) fn is_indexed(&self) -> bool {
-        match self {
-            Children::Indexed(_) => true,
-            Children::Unknown | Children::Named(_) => false,
-        }
+        matches!(self, Children::Indexed(_))
     }
 
     pub(crate) fn is_named(&self) -> bool {
+        matches!(self, Children::Named(_))
+    }
+
+    pub(crate) fn indexed(&self) -> Option<&Vec<Option<TcKey>>> {
         match self {
-            Children::Named(res) => true,
-            Children::Unknown | Children::Indexed(_) => false,
+            Children::Indexed(res) => Some(res),
+            Children::Unknown | Children::Named(_) => None,
         }
     }
 
-    pub(crate) fn indexed(&self) -> &Vec<Option<TcKey>> {
+    pub(crate) fn indexed_mut(&mut self) -> Option<&mut Vec<Option<TcKey>>> {
         match self {
-            Children::Indexed(res) => res,
-            Children::Unknown | Children::Named(_) => panic!("children are not indexed."),
+            Children::Indexed(res) => Some(res),
+            Children::Unknown => {
+                *self = Children::Indexed(vec![]);
+                self.indexed_mut()
+            }
+            Children::Named(_) => panic!("children are not indexed."),
         }
     }
 
-    pub(crate) fn indexed_mut(&mut self) -> &mut Vec<Option<TcKey>> {
+    pub(crate) fn named(&self) -> Option<&HashMap<String, Option<TcKey>>> {
         match self {
-            Children::Indexed(res) => res,
-            Children::Unknown | Children::Named(_) => panic!("children are not indexed."),
+            Children::Named(res) => Some(res),
+            Children::Unknown | Children::Indexed(_) => None,
         }
     }
 
-    pub(crate) fn named(&self) -> &HashMap<String, Option<TcKey>> {
+    pub(crate) fn named_mut(&mut self) -> Option<&mut HashMap<String, Option<TcKey>>> {
         match self {
-            Children::Named(res) => res,
-            Children::Unknown | Children::Indexed(_) => panic!("children are not named."),
+            Children::Named(res) => Some(res),
+            Children::Unknown => {
+                *self = Children::Named(HashMap::new());
+                self.named_mut()
+            }
+            Children::Indexed(_) => None,
         }
     }
 
-    pub(crate) fn named_mut(&mut self) -> &mut HashMap<String, Option<TcKey>> {
+    pub(crate) fn to_constraint(&self) -> ChildConstraint {
         match self {
-            Children::Named(res) => res,
-            Children::Unknown | Children::Indexed(_) => panic!("children are not named."),
-        }
-    }
-
-    pub(crate) fn to_constraint(self) -> ChildrenConstraint {
-        match self {
-            Children::Unknown => ChildrenConstraint::None,
-            Children::Indexed(c) => ChildrenConstraint::Indexed(c.len()),
-            Children::Named(c) => ChildrenConstraint::Named(c.keys().cloned().collect()),
+            Children::Unknown => ChildConstraint::Unconstrained,
+            Children::Indexed(c) => ChildConstraint::Indexed(c.len()),
+            Children::Named(c) => ChildConstraint::Named(c.keys().cloned().collect()),
         }
     }
 }
@@ -273,16 +286,59 @@ pub type PreliminaryTypeTable<V> = HashMap<TcKey, Preliminary<V>>;
 /// A type table containing the constructed type of the inferred [ContextSensitiveVariant] for each [TcKey].  Requires [ContextSensitiveVariant] to implement [Constructable].
 pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
 
+#[derive(Debug, Clone)]
+pub enum ResolvedChildren<T: Clone + Debug> {
+    None,
+    Indexed(Vec<T>),
+    Named(HashMap<String, T>),
+}
+
+impl<T: Clone + Debug> ResolvedChildren<T> {
+    pub fn into_indexed(self) -> Vec<T> {
+        match self {
+            ResolvedChildren::Indexed(res) => res,
+            ResolvedChildren::Named(_) | ResolvedChildren::None => panic!("Children did not resolve as indexed."),
+        }
+    }
+
+    pub fn into_named(self) -> HashMap<String, T> {
+        match self {
+            ResolvedChildren::Named(res) => res,
+            ResolvedChildren::Indexed(_) | ResolvedChildren::None => panic!("Children did not resolve as named."),
+        }
+    }
+}
+
+impl<T: Clone + Debug> FromIterator<T> for ResolvedChildren<T> {
+    fn from_iter<IT: IntoIterator<Item = T>>(iter: IT) -> Self {
+        let mut iter = iter.into_iter().peekable();
+        if iter.peek().is_some() {
+            ResolvedChildren::Indexed(Vec::from_iter(iter))
+        } else {
+            ResolvedChildren::None
+        }
+    }
+}
+
+impl<T: Clone + Debug> FromIterator<(String, T)> for ResolvedChildren<T> {
+    fn from_iter<IT: IntoIterator<Item = (String, T)>>(iter: IT) -> Self {
+        let mut iter = iter.into_iter().peekable();
+        if iter.peek().is_some() {
+            ResolvedChildren::Named(HashMap::from_iter(iter))
+        } else {
+            ResolvedChildren::None
+        }
+    }
+}
+
 /// A type implementing this trait can potentially be transformed into a concrete representation. This transformation can fail.
 pub trait Constructable: ContextSensitiveVariant {
     /// The result type of the attempted construction.
     type Type: Clone + Debug;
     /// Attempts to transform `self` into an more concrete `Self::Type`.
     /// Returns a [ContextSensitiveVariant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
-    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err>;
-
-    fn construct_named(
+    fn construct(
         &self,
-        children: HashMap<String, Self::Type>,
+        children: ResolvedChildren<Self::Type>,
     ) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err>;
 }

@@ -1,5 +1,5 @@
 use crate::constraint_graph::ConstraintGraph;
-use crate::types::{Constructable, ContextSensitiveVariant, PreliminaryTypeTable, TypeTable, Variant};
+use crate::types::{Children, Constructable, ContextSensitiveVariant, PreliminaryTypeTable, TypeTable, Variant};
 use crate::{
     keys::{Constraint, TcKey},
     types::Preliminary,
@@ -106,9 +106,21 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
-    pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<V>> {
+    pub fn get_indexed_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<V>> {
         let TypeChecker { graph, variables: _, context } = self;
-        let key = graph.nth_child(parent, nth, &context)?;
+        let key = graph.nth_child(parent, nth, context)?;
+        // *self = TypeChecker { graph, variables, context };
+        Ok(key)
+    }
+
+    /// Provides a key to the `nth` child of the type behind `parent`.
+    /// This imposes the restriction that `parent` resolves to a type that has at least an arity of `nth`.
+    /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
+    /// Contradictions due to this constraint may only occur later when resolving further constraints.
+    /// Calling this function several times on a parent with the same `nth` results in the same key.
+    pub fn get_named_child_key(&mut self, parent: TcKey, name: String) -> Result<TcKey, TcErr<V>> {
+        let TypeChecker { graph, variables: _, context } = self;
+        let key = graph.named_child(parent, name, context)?;
         // *self = TypeChecker { graph, variables, context };
         Ok(key)
     }
@@ -120,25 +132,33 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
             Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
             Constraint::Equal(a, b) => {
                 let TypeChecker { graph, variables: _, context } = self;
-                graph.equate(a, b, &context)?;
+                graph.equate(a, b, context)?;
             }
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => {
                 let TypeChecker { graph, variables: _, context } = self;
-                graph.explicit_bound(target, bound, &context)?;
+                graph.explicit_bound(target, bound, context)?;
             }
         }
         Ok(())
     }
 
     /// Lifts a collection of keys as children into a certain recursive variant.
-    pub fn lift_into(&mut self, variant: V, mut sub_types: Vec<TcKey>) -> TcKey {
-        self.lift_partially(variant, sub_types.drain(..).map(Some).collect())
+    pub fn lift_into_indexed(&mut self, variant: V, mut sub_types: Vec<TcKey>) -> TcKey {
+        self.lift_partially_indexed(variant, sub_types.drain(..).map(Some).collect())
     }
 
     /// Lifts a collection of keys as subset of children into a certain recursive variant.
-    pub fn lift_partially(&mut self, variant: V, sub_types: Vec<Option<TcKey>>) -> TcKey {
-        self.graph.lift(variant, sub_types)
+    pub fn lift_partially_indexed(&mut self, variant: V, sub_types: Vec<Option<TcKey>>) -> TcKey {
+        self.graph.lift(variant, Children::Indexed(sub_types))
+    }
+
+    pub fn lift_into_named(&mut self, variant: V, mut sub_types: HashMap<String, TcKey>) -> TcKey {
+        self.lift_partially_named(variant, sub_types.drain().map(|(k, v)| (k, Some(v))).collect())
+    }
+
+    pub fn lift_partially_named(&mut self, variant: V, sub_types: HashMap<String, Option<TcKey>>) -> TcKey {
+        self.graph.lift(variant, Children::Named(sub_types))
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
@@ -247,7 +267,13 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
     /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
     /// reported by the construction of the child.
-    ChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
+    IndexedChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
+    /// This error indicates that a variant requires children, for one of which the construction failed.
+    /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
+    /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
+    /// The error contains the affected key, the name of the child, the preliminary result of which a child construction failed, and the error
+    /// reported by the construction of the child.
+    NamedChildConstruction(TcKey, String, Preliminary<V>, V::Err),
     /// This error reports cyclic non-equality dependencies in the constraint graph.
     /// Example: Key 1 is more concrete than Key 2, which is more concrete than Key 3, which is more concrete than Key 1.
     CyclicGraph,
