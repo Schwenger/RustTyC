@@ -46,6 +46,7 @@ pub struct TypeChecker<V: ContextSensitiveVariant, Var: TcVar> {
     variables: HashMap<Var, TcKey>,
     graph: ConstraintGraph<V>,
     context: V::Context,
+    child_names: HashMap<String, usize>,
 }
 
 impl<V: Variant, Var: TcVar> Default for TypeChecker<V, Var> {
@@ -80,7 +81,13 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
 impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// Creates a new, empty type checker with the given context.  
     pub fn with_context(context: V::Context) -> Self {
-        TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new(), context }
+        TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new(), context, child_names: HashMap::new() }
+    }
+
+    /// Defines all possible names that should be allowed for child accesses.
+    pub fn set_named_children(&mut self, names: HashSet<String>) -> &mut Self {
+        self.child_names.extend(names.into_iter().enumerate().map(|(id, name)| (name, id)));
+        self
     }
 
     /// Generates a new key representing a term.  
@@ -107,7 +114,7 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
     pub fn get_indexed_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<V>> {
-        let TypeChecker { graph, variables: _, context } = self;
+        let TypeChecker { graph, variables: _, context, .. } = self;
         let key = graph.nth_child(parent, nth, context)?;
         // *self = TypeChecker { graph, variables, context };
         Ok(key)
@@ -118,8 +125,8 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
-    pub fn get_named_child_key(&mut self, parent: TcKey, name: String) -> Result<TcKey, TcErr<V>> {
-        let TypeChecker { graph, variables: _, context } = self;
+    pub fn get_named_child_key(&mut self, parent: TcKey, name: &str) -> Result<TcKey, TcErr<V>> {
+        let TypeChecker { graph, variables: _, context, child_names } = self;
         let key = graph.named_child(parent, name, context)?;
         // *self = TypeChecker { graph, variables, context };
         Ok(key)
@@ -131,12 +138,12 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         match constr {
             Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
             Constraint::Equal(a, b) => {
-                let TypeChecker { graph, variables: _, context } = self;
+                let TypeChecker { graph, variables: _, context, .. } = self;
                 graph.equate(a, b, context)?;
             }
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => {
-                let TypeChecker { graph, variables: _, context } = self;
+                let TypeChecker { graph, variables: _, context, .. } = self;
                 graph.explicit_bound(target, bound, context)?;
             }
         }
@@ -187,7 +194,7 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// For recursive types, the respective [Preliminary] provides access to [crate::TcKey]s refering to their children.
     /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
     pub fn type_check_preliminary(self) -> Result<PreliminaryTypeTable<V>, TcErr<V>> {
-        let TypeChecker { graph, variables: _, context } = self;
+        let TypeChecker { graph, variables: _, context, .. } = self;
         graph.solve_preliminary(context)
     }
 }
@@ -202,7 +209,7 @@ where
     /// minimally constrained, constructed type, i.e. [Constructable::Type].  Refer to [TypeChecker::type_check_preliminary()] if [Variant] does not implement [Constructable].
     /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
     pub fn type_check(self) -> Result<TypeTable<V>, TcErr<V>> {
-        let TypeChecker { graph, variables: _, context } = self;
+        let TypeChecker { graph, variables: _, context, .. } = self;
         graph.solve(context)
     }
 }

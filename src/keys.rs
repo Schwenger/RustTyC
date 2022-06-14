@@ -70,13 +70,13 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///             (UInt, x) | (x, UInt) => Ok(x),       // x can only be UInt or U8.
 ///             (U8, U8) => Ok(U8),
 ///         }?;
-///         Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
+///         Ok(Partial { variant, children: ChildConstraint::NoChildren })
 ///     }
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
 ///     fn arity(&self) -> Arity {
-///         Arity::FixedIndexed(0)
+///         Arity::None
 ///     }
 /// }
 /// #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -110,13 +110,13 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///             (UInt, x) | (x, UInt) => Ok(x),       // x can only be UInt or U8.
 ///             (U8, U8) => Ok(U8),
 ///         }?;
-///         Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
+///         Ok(Partial { variant, children: ChildConstraint::NoChildren})
 ///     }
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
 ///     fn arity(&self) -> Arity {
-///         Arity::FixedIndexed(0)
+///         Arity::None
 ///     }
 /// }
 /// #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]

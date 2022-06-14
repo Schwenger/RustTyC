@@ -1,9 +1,10 @@
 use crate::types::{ChildConstraint, ResolvedChildren};
 use crate::{
-    type_checker::VarlessTypeChecker, types::Arity, Constructable, Partial, PreliminaryTypeTable, TcErr, TcKey, TcVar,
-    TypeChecker, TypeTable, Variant as TcVariant,
+    type_checker::VarlessTypeChecker, types::Arity, Constructable, ContextSensitiveVariant, Partial,
+    PreliminaryTypeTable, TcErr, TcKey, TcVar, TypeChecker, TypeTable, Variant as TcVariant,
 };
 use std::cmp::max;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::hash::Hash;
 
@@ -53,11 +54,11 @@ impl TcVariant for Variant {
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
             (Numeric, Numeric) => Ok(Numeric),
         }?;
-        Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
+        Ok(Partial { variant, children: ChildConstraint::NoChildren })
     }
 
     fn arity(&self) -> Arity {
-        Arity::FixedIndexed(0)
+        Arity::None
     }
 }
 
@@ -364,4 +365,216 @@ fn test_meet() {
     assert_eq!(prelim_tt[&key_a].variant, a_type);
     assert_eq!(prelim_tt[&key_b].variant, c_type);
     assert_eq!(prelim_tt[&key_c].variant, c_type);
+}
+
+// ################## Named Children Tests ###################
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum ConcreteStructType {
+    String,
+    Bool,
+    Integer,
+    Tuple(Box<ConcreteStructType>, Box<ConcreteStructType>),
+    Struct(String, HashMap<String, ConcreteStructType>),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum StructVariant {
+    Any,
+    String,
+    Bool,
+    Integer,
+    Tuple,
+    Struct(String),
+}
+
+impl ContextSensitiveVariant for StructVariant {
+    type Err = String;
+    type Context = HashMap<String, HashSet<String>>;
+
+    fn top() -> Self {
+        StructVariant::Any
+    }
+
+    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, _ctx: &Self::Context) -> Result<Partial<Self>, Self::Err> {
+        let Partial { variant: lhs, children: l_constraint } = lhs;
+        let Partial { variant: rhs, children: r_constraint } = rhs;
+
+        let (new_var, new_constr) = match (lhs, rhs) {
+            (StructVariant::Any, other) => (other, r_constraint),
+            (other, StructVariant::Any) => (other, l_constraint),
+            (StructVariant::String, StructVariant::String) => (StructVariant::String, l_constraint),
+            (StructVariant::String, _) | (_, StructVariant::String) => return Err("String only with String".into()),
+            (StructVariant::Bool, StructVariant::Bool) => (StructVariant::Bool, l_constraint),
+            (StructVariant::Bool, _) | (_, StructVariant::Bool) => return Err("Bool only with Bool".into()),
+            (StructVariant::Integer, StructVariant::Integer) => (StructVariant::Integer, l_constraint),
+            (StructVariant::Integer, _) | (_, StructVariant::Integer) => return Err("Integer only with Integer".into()),
+            (StructVariant::Tuple, StructVariant::Tuple) => (StructVariant::Tuple, l_constraint),
+            (StructVariant::Tuple, _) | (_, StructVariant::Tuple) => return Err("Tuple only with tuple".into()),
+            (StructVariant::Struct(name_l), StructVariant::Struct(name_r)) if name_l == name_r => {
+                let fields_l = l_constraint.names();
+                let fields_r = r_constraint.names();
+                if fields_l == fields_r {
+                    (StructVariant::Struct(name_l), l_constraint)
+                } else {
+                    return Err("Tried to match structs with same names but different fields".into());
+                }
+            }
+            (StructVariant::Struct(_), _) => return Err("Structs only with structs with the same name".into()),
+        };
+        Ok(Partial { variant: new_var, children: new_constr })
+    }
+
+    fn arity(&self, ctx: &Self::Context) -> Arity {
+        match self {
+            StructVariant::Any => Arity::Variable,
+            StructVariant::String | StructVariant::Bool | StructVariant::Integer => Arity::None,
+            StructVariant::Tuple => Arity::FixedIndexed(2),
+            StructVariant::Struct(name) => Arity::FixedNamed(ctx[name].clone()),
+        }
+    }
+
+    fn equal(this: &Self, that: &Self, _ctx: &Self::Context) -> bool {
+        this == that
+    }
+}
+
+impl Constructable for StructVariant {
+    type Type = ConcreteStructType;
+
+    fn construct(
+        &self,
+        children: ResolvedChildren<Self::Type>,
+    ) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err> {
+        match self {
+            StructVariant::Any => Ok(ConcreteStructType::String),
+            StructVariant::String => Ok(ConcreteStructType::String),
+            StructVariant::Bool => Ok(ConcreteStructType::Bool),
+            StructVariant::Integer => Ok(ConcreteStructType::Integer),
+            StructVariant::Tuple => {
+                let children = children.into_indexed();
+                assert_eq!(children.len(), 2, "Expected two tuple to have to children");
+
+                Ok(ConcreteStructType::Tuple(Box::new(children[0].clone()), Box::new(children[1].clone())))
+            }
+            StructVariant::Struct(name) => Ok(ConcreteStructType::Struct(name.clone(), children.into_named())),
+        }
+    }
+}
+
+#[test]
+fn test_struct() {
+    let structs = HashMap::from([(
+        "Struct1".to_string(),
+        HashSet::from(["Hello".to_string(), "World".to_string(), "Test".to_string()]),
+    )]);
+    let mut tc: TypeChecker<StructVariant, Variable> = TypeChecker::with_context(structs);
+    let key_a = tc.new_term_key();
+    let key_b = tc.new_term_key();
+    let key_c = tc.new_term_key();
+
+    let a_type = StructVariant::Struct("Struct1".into());
+    let int_type = StructVariant::Integer;
+    let string_type = StructVariant::String;
+    let bool_type = StructVariant::Bool;
+
+    let c_type = ConcreteStructType::Struct(
+        "Struct1".into(),
+        HashMap::from([
+            ("Hello".to_string(), ConcreteStructType::Integer),
+            ("World".to_string(), ConcreteStructType::String),
+            ("Test".to_string(), ConcreteStructType::Bool),
+        ]),
+    );
+
+    tc.impose(key_a.concretizes_explicit(a_type.clone())).unwrap();
+    let a_hello = tc.get_named_child_key(key_a, "Hello").unwrap();
+    let a_world = tc.get_named_child_key(key_a, "World").unwrap();
+    tc.impose(a_hello.concretizes_explicit(int_type)).unwrap();
+    tc.impose(a_world.concretizes_explicit(string_type)).unwrap();
+
+    tc.impose(key_b.concretizes_explicit(a_type)).unwrap();
+    let c_test = tc.get_named_child_key(key_b, "Test").unwrap();
+    tc.impose(c_test.concretizes_explicit(bool_type)).unwrap();
+
+    tc.impose(key_c.is_meet_of(key_a, key_b)).unwrap();
+
+    let tt = tc.type_check().expect("unexpected type error.");
+    assert_eq!(tt[&key_c], c_type);
+}
+
+#[test]
+fn test_incompatible_children() {
+    let structs = HashMap::from([(
+        "Struct1".to_string(),
+        HashSet::from(["Hello".to_string(), "World".to_string(), "Test".to_string()]),
+    )]);
+    let mut tc: TypeChecker<StructVariant, Variable> = TypeChecker::with_context(structs);
+    let key_a = tc.new_term_key();
+    let key_b = tc.new_term_key();
+    let key_c = tc.new_term_key();
+
+    let a_type = StructVariant::Struct("Struct1".into());
+    let int_type = StructVariant::Integer;
+    let bool_type = StructVariant::Bool;
+
+    tc.impose(key_a.concretizes_explicit(a_type.clone())).unwrap();
+    let a_hello = tc.get_named_child_key(key_a, "Hello").unwrap();
+    tc.impose(a_hello.concretizes_explicit(int_type)).unwrap();
+
+    tc.impose(key_b.concretizes_explicit(a_type)).unwrap();
+    let c_hello = tc.get_named_child_key(key_b, "Hello").unwrap();
+    tc.impose(c_hello.concretizes_explicit(bool_type)).unwrap();
+
+    tc.impose(key_c.is_meet_of(key_a, key_b)).unwrap();
+
+    assert!(tc.type_check().is_err());
+}
+
+#[test]
+fn test_mixed_access() {
+    let structs = HashMap::from([(
+        "Struct1".to_string(),
+        HashSet::from(["Hello".to_string(), "World".to_string(), "Test".to_string()]),
+    )]);
+    let mut tc: TypeChecker<StructVariant, Variable> = TypeChecker::with_context(structs);
+    let key_a = tc.new_term_key();
+    let key_b = tc.new_term_key();
+    let key_c = tc.new_term_key();
+
+    let a_type = StructVariant::Struct("Struct1".into());
+    let b_type = StructVariant::Tuple;
+
+    tc.impose(key_a.concretizes_explicit(a_type.clone())).unwrap();
+    let _ = tc.get_named_child_key(key_a, "Hello").unwrap();
+    let _ = tc.get_indexed_child_key(key_a, 1).expect_err("expected type error");
+
+    tc.impose(key_b.concretizes_explicit(b_type)).unwrap();
+    let _ = tc.get_indexed_child_key(key_b, 1).unwrap();
+    let _ = tc.get_named_child_key(key_b, "World").expect_err("expected type error");
+
+    let _ = tc.get_named_child_key(key_c, "Test").unwrap();
+    let _ = tc.get_indexed_child_key(key_c, 1).expect_err("expected type error");
+}
+
+#[test]
+fn test_mixed_struct_tuple() {
+    let structs = HashMap::from([(
+        "Struct1".to_string(),
+        HashSet::from(["Hello".to_string(), "World".to_string(), "Test".to_string()]),
+    )]);
+    let mut tc: TypeChecker<StructVariant, Variable> = TypeChecker::with_context(structs);
+    let key_a = tc.new_term_key();
+    let key_b = tc.new_term_key();
+    let key_c = tc.new_term_key();
+
+    let a_type = StructVariant::Struct("Struct1".into());
+    let b_type = StructVariant::Tuple;
+
+    tc.impose(key_a.concretizes_explicit(a_type)).unwrap();
+    tc.impose(key_b.concretizes_explicit(b_type)).unwrap();
+
+    tc.impose(key_c.is_meet_of(key_a, key_b)).unwrap();
+
+    assert!(tc.type_check().is_err());
 }

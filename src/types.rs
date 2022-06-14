@@ -128,6 +128,8 @@ impl<V: Variant> ContextSensitiveVariant for V {
 /// Represents the arity of a [Variant] or [ContextSensitiveVariant].
 #[derive(Debug, Clone)]
 pub enum Arity {
+    /// The Type should have no children at all.
+    None,
     /// The arity is variable, i.e., it does not have a specific value.
     Variable,
     /// The arity has a fixed value.
@@ -141,6 +143,7 @@ impl Arity {
     pub(crate) fn to_opt(&self) -> Option<usize> {
         match self {
             Arity::Variable => None,
+            Arity::None => Some(0),
             Arity::FixedIndexed(n) => Some(*n),
             Arity::FixedNamed(s) => Some(s.len()),
         }
@@ -151,6 +154,7 @@ impl From<Arity> for ChildConstraint {
     fn from(a: Arity) -> Self {
         match a {
             Arity::Variable => ChildConstraint::Unconstrained,
+            Arity::None => ChildConstraint::NoChildren,
             Arity::FixedIndexed(idx) => ChildConstraint::Indexed(idx),
             Arity::FixedNamed(names) => ChildConstraint::Named(names),
         }
@@ -159,6 +163,9 @@ impl From<Arity> for ChildConstraint {
 
 #[derive(Debug, Clone)]
 pub enum ChildConstraint {
+    /// There should be no children
+    NoChildren,
+    /// Children can either be indexed or named
     Unconstrained,
     ///Children are accessed through indices.
     Indexed(usize),
@@ -171,6 +178,7 @@ impl ChildConstraint {
     pub fn len(&self) -> usize {
         match self {
             ChildConstraint::Unconstrained => 0,
+            ChildConstraint::NoChildren => 0,
             ChildConstraint::Indexed(size) => *size,
             ChildConstraint::Named(set) => set.len(),
         }
@@ -179,14 +187,18 @@ impl ChildConstraint {
     pub fn names(&self) -> &HashSet<String> {
         match self {
             ChildConstraint::Named(set) => set,
-            ChildConstraint::Indexed(_) | ChildConstraint::Unconstrained => panic!("Child constraint is not named"),
+            ChildConstraint::Indexed(_) | ChildConstraint::Unconstrained | ChildConstraint::NoChildren => {
+                panic!("Child constraint is not named")
+            }
         }
     }
 
     pub fn index(&self) -> usize {
         match self {
             ChildConstraint::Indexed(idx) => *idx,
-            ChildConstraint::Named(_) | ChildConstraint::Unconstrained => panic!("Child constraint is not named"),
+            ChildConstraint::Named(_) | ChildConstraint::Unconstrained | ChildConstraint::NoChildren => {
+                panic!("Child constraint is not named")
+            }
         }
     }
 }
@@ -206,16 +218,18 @@ pub struct Partial<V: Sized> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Children {
     Unknown,
+    None,
     Indexed(Vec<Option<TcKey>>),
     Named(HashMap<String, Option<TcKey>>),
 }
 
 impl Children {
-    pub(crate) fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> Option<usize> {
         match self {
-            Children::Unknown => 0,
-            Children::Indexed(c) => c.len(),
-            Children::Named(c) => c.len(),
+            Children::Unknown => None,
+            Children::None => Some(0),
+            Children::Indexed(c) => Some(c.len()),
+            Children::Named(c) => Some(c.len()),
         }
     }
 
@@ -230,7 +244,7 @@ impl Children {
     pub(crate) fn indexed(&self) -> Option<&Vec<Option<TcKey>>> {
         match self {
             Children::Indexed(res) => Some(res),
-            Children::Unknown | Children::Named(_) => None,
+            Children::Unknown | Children::Named(_) | Children::None => None,
         }
     }
 
@@ -241,14 +255,14 @@ impl Children {
                 *self = Children::Indexed(vec![]);
                 self.indexed_mut()
             }
-            Children::Named(_) => panic!("children are not indexed."),
+            Children::Named(_) | Children::None => None,
         }
     }
 
     pub(crate) fn named(&self) -> Option<&HashMap<String, Option<TcKey>>> {
         match self {
             Children::Named(res) => Some(res),
-            Children::Unknown | Children::Indexed(_) => None,
+            Children::Unknown | Children::Indexed(_) | Children::None => None,
         }
     }
 
@@ -259,13 +273,14 @@ impl Children {
                 *self = Children::Named(HashMap::new());
                 self.named_mut()
             }
-            Children::Indexed(_) => None,
+            Children::Indexed(_) | Children::None => None,
         }
     }
 
     pub(crate) fn to_constraint(&self) -> ChildConstraint {
         match self {
             Children::Unknown => ChildConstraint::Unconstrained,
+            Children::None => ChildConstraint::NoChildren,
             Children::Indexed(c) => ChildConstraint::Indexed(c.len()),
             Children::Named(c) => ChildConstraint::Named(c.keys().cloned().collect()),
         }
