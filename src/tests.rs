@@ -57,7 +57,7 @@ impl TcVariant for Variant {
         Ok(Partial { variant, children: ChildConstraint::NoChildren })
     }
 
-    fn arity(&self) -> Arity {
+    fn arity(&self) -> Arity<String> {
         Arity::None
     }
 }
@@ -425,7 +425,7 @@ impl ContextSensitiveVariant for StructVariant {
         Ok(Partial { variant: new_var, children: new_constr })
     }
 
-    fn arity(&self, ctx: &Self::Context) -> Arity {
+    fn arity(&self, ctx: &Self::Context) -> Arity<String> {
         match self {
             StructVariant::Any => Arity::Variable,
             StructVariant::String | StructVariant::Bool | StructVariant::Integer => Arity::None,
@@ -468,7 +468,9 @@ fn test_struct() {
         "Struct1".to_string(),
         HashSet::from(["Hello".to_string(), "World".to_string(), "Test".to_string()]),
     )]);
-    let mut tc: TypeChecker<StructVariant, Variable> = TypeChecker::with_context(structs);
+    let field_names = HashSet::from(["Hello".into(), "World".into(), "Test".into()]);
+    let mut tc: TypeChecker<StructVariant, Variable> =
+        TypeChecker::with_context(structs).define_children_names(field_names);
     let key_a = tc.new_term_key();
     let key_b = tc.new_term_key();
     let key_c = tc.new_term_key();
@@ -509,7 +511,9 @@ fn test_incompatible_children() {
         "Struct1".to_string(),
         HashSet::from(["Hello".to_string(), "World".to_string(), "Test".to_string()]),
     )]);
-    let mut tc: TypeChecker<StructVariant, Variable> = TypeChecker::with_context(structs);
+    let field_names = HashSet::from(["Hello".into(), "World".into(), "Test".into()]);
+    let mut tc: TypeChecker<StructVariant, Variable> =
+        TypeChecker::with_context(structs).define_children_names(field_names);
     let key_a = tc.new_term_key();
     let key_b = tc.new_term_key();
     let key_c = tc.new_term_key();
@@ -537,7 +541,9 @@ fn test_mixed_access() {
         "Struct1".to_string(),
         HashSet::from(["Hello".to_string(), "World".to_string(), "Test".to_string()]),
     )]);
-    let mut tc: TypeChecker<StructVariant, Variable> = TypeChecker::with_context(structs);
+    let field_names = HashSet::from(["Hello".into(), "World".into(), "Test".into()]);
+    let mut tc: TypeChecker<StructVariant, Variable> =
+        TypeChecker::with_context(structs).define_children_names(field_names);
     let key_a = tc.new_term_key();
     let key_b = tc.new_term_key();
     let key_c = tc.new_term_key();
@@ -563,7 +569,9 @@ fn test_mixed_struct_tuple() {
         "Struct1".to_string(),
         HashSet::from(["Hello".to_string(), "World".to_string(), "Test".to_string()]),
     )]);
-    let mut tc: TypeChecker<StructVariant, Variable> = TypeChecker::with_context(structs);
+    let field_names = HashSet::from(["Hello".into(), "World".into(), "Test".into()]);
+    let mut tc: TypeChecker<StructVariant, Variable> =
+        TypeChecker::with_context(structs).define_children_names(field_names);
     let key_a = tc.new_term_key();
     let key_b = tc.new_term_key();
     let key_c = tc.new_term_key();

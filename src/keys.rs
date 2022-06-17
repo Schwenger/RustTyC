@@ -75,7 +75,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
-///     fn arity(&self) -> Arity {
+///     fn arity(&self) -> Arity<String> {
 ///         Arity::None
 ///     }
 /// }
@@ -115,7 +115,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
-///     fn arity(&self) -> Arity {
+///     fn arity(&self) -> Arity<String> {
 ///         Arity::None
 ///     }
 /// }

@@ -55,7 +55,7 @@ impl TcVariant for Variant {
         Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
     }
 
-    fn arity(&self) -> Arity {
+    fn arity(&self) -> Arity<String> {
         Arity::FixedIndexed(0)
     }
 }
