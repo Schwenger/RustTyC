@@ -9,6 +9,7 @@ use std::{collections::HashMap, fmt::Debug};
 
 use crate::TcKey;
 use std::collections::HashSet;
+use std::hash::Hash;
 use std::iter::FromIterator;
 
 /// A variant that will be inferred during the type checking procedure.
@@ -67,7 +68,7 @@ pub trait Variant: Sized + Clone + Debug + Eq {
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
     /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
     /// the tuple has a variable arity and potentially a different variant.
-    fn arity(&self) -> Arity;
+    fn arity(&self) -> Arity<String>;
 }
 
 /// A [Variant] which requires a context for meet operations and equality checks.
@@ -97,7 +98,7 @@ pub trait ContextSensitiveVariant: Sized + Clone + Debug {
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
     /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
     /// the tuple has a variable arity and potentially a different variant.
-    fn arity(&self, ctx: &Self::Context) -> Arity;
+    fn arity(&self, ctx: &Self::Context) -> Arity<String>;
 
     /// Context-sensitive version of [Eq].  All rules apply.
     fn equal(this: &Self, that: &Self, ctx: &Self::Context) -> bool;
@@ -116,7 +117,7 @@ impl<V: Variant> ContextSensitiveVariant for V {
         V::meet(lhs, rhs)
     }
 
-    fn arity(&self, _ctx: &Self::Context) -> Arity {
+    fn arity(&self, _ctx: &Self::Context) -> Arity<String> {
         self.arity()
     }
 
@@ -127,18 +128,18 @@ impl<V: Variant> ContextSensitiveVariant for V {
 
 /// Represents the arity of a [Variant] or [ContextSensitiveVariant].
 #[derive(Debug, Clone)]
-pub enum Arity {
+pub enum Arity<R: Debug + Clone + Hash> {
     /// The Type should have no children at all.
     None,
     /// The arity is variable, i.e., it does not have a specific value.
     Variable,
     /// The arity has a fixed value.
     FixedIndexed(usize),
-    /// The arity has a fixed set of names.
-    FixedNamed(HashSet<String>),
+    /// The arity has a fixed set of fields given by their id.
+    FixedNamed(HashSet<R>),
 }
 
-impl Arity {
+impl<R: Debug + Clone + Hash> Arity<R> {
     /// Transform `self` into an option, i.e., it will yield a `Some` with its arity if defined and `None` otherwise.
     pub(crate) fn to_opt(&self) -> Option<usize> {
         match self {
@@ -150,8 +151,18 @@ impl Arity {
     }
 }
 
-impl From<Arity> for ChildConstraint {
-    fn from(a: Arity) -> Self {
+impl Arity<String> {
+    pub(crate) fn substitute(&self, child_ids: &HashMap<String, usize>) -> Arity<usize> {
+        match self {
+            Arity::Variable => Arity::Variable,
+            Arity::None => Arity::None,
+            Arity::FixedIndexed(idx) => Arity::FixedIndexed(*idx),
+            Arity::FixedNamed(names) => Arity::FixedNamed(names.iter().map(|k| child_ids[k]).collect()),
+        }
+    }
+}
+impl From<Arity<usize>> for ChildConstraint {
+    fn from(a: Arity<usize>) -> Self {
         match a {
             Arity::Variable => ChildConstraint::Unconstrained,
             Arity::None => ChildConstraint::NoChildren,
@@ -167,10 +178,12 @@ pub enum ChildConstraint {
     NoChildren,
     /// Children can either be indexed or named
     Unconstrained,
-    ///Children are accessed through indices.
+    /// Children are accessed through indices.
+    /// The number represents the least amount of children the type will have.
     Indexed(usize),
-    ///Children are accessed by name.
-    Named(HashSet<String>),
+    /// Children are accessed by name.
+    /// The HashSet represents the minimum set of fields required.
+    Named(HashSet<usize>),
 }
 
 impl ChildConstraint {
@@ -184,7 +197,7 @@ impl ChildConstraint {
         }
     }
 
-    pub fn names(&self) -> &HashSet<String> {
+    pub fn names(&self) -> &HashSet<usize> {
         match self {
             ChildConstraint::Named(set) => set,
             ChildConstraint::Indexed(_) | ChildConstraint::Unconstrained | ChildConstraint::NoChildren => {
@@ -220,7 +233,7 @@ pub enum Children {
     Unknown,
     None,
     Indexed(Vec<Option<TcKey>>),
-    Named(HashMap<String, Option<TcKey>>),
+    Named(HashMap<usize, Option<TcKey>>),
 }
 
 impl Children {
@@ -259,14 +272,14 @@ impl Children {
         }
     }
 
-    pub(crate) fn named(&self) -> Option<&HashMap<String, Option<TcKey>>> {
+    pub(crate) fn named(&self) -> Option<&HashMap<usize, Option<TcKey>>> {
         match self {
             Children::Named(res) => Some(res),
             Children::Unknown | Children::Indexed(_) | Children::None => None,
         }
     }
 
-    pub(crate) fn named_mut(&mut self) -> Option<&mut HashMap<String, Option<TcKey>>> {
+    pub(crate) fn named_mut(&mut self) -> Option<&mut HashMap<usize, Option<TcKey>>> {
         match self {
             Children::Named(res) => Some(res),
             Children::Unknown => {
@@ -282,7 +295,7 @@ impl Children {
             Children::Unknown => ChildConstraint::Unconstrained,
             Children::None => ChildConstraint::NoChildren,
             Children::Indexed(c) => ChildConstraint::Indexed(c.len()),
-            Children::Named(c) => ChildConstraint::Named(c.keys().cloned().collect()),
+            Children::Named(c) => ChildConstraint::Named(c.keys().copied().collect()),
         }
     }
 }

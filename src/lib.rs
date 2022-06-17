@@ -38,7 +38,7 @@
 //! type MyTypeErr = String;
 //! impl Variant for MyVariant {
 //!     type Err = MyTypeErr;
-//!     fn arity(&self) -> Arity { Arity::FixedIndexed(0) }
+//!     fn arity(&self) -> Arity<String> { Arity::FixedIndexed(0) }
 //!     fn top() -> Self { MyVariant::Top }
 //!     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
 //!         use rusttyc::types::ChildConstraint;

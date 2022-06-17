@@ -46,7 +46,11 @@ pub struct TypeChecker<V: ContextSensitiveVariant, Var: TcVar> {
     variables: HashMap<Var, TcKey>,
     graph: ConstraintGraph<V>,
     context: V::Context,
-    child_names: HashMap<String, usize>,
+
+    /// Child id is the index of its name
+    child_names: Vec<String>,
+    /// Maps the child name to its index
+    child_ids: HashMap<String, usize>,
 }
 
 impl<V: Variant, Var: TcVar> Default for TypeChecker<V, Var> {
@@ -81,13 +85,31 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
 impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// Creates a new, empty type checker with the given context.  
     pub fn with_context(context: V::Context) -> Self {
-        TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new(), context, child_names: HashMap::new() }
+        TypeChecker {
+            variables: HashMap::new(),
+            graph: ConstraintGraph::new(),
+            context,
+            child_names: vec![],
+            child_ids: HashMap::new(),
+        }
     }
 
     /// Defines all possible names that should be allowed for child accesses.
-    pub fn set_named_children(&mut self, names: HashSet<String>) -> &mut Self {
-        self.child_names.extend(names.into_iter().enumerate().map(|(id, name)| (name, id)));
+    pub fn define_children_names(mut self, names: HashSet<String>) -> Self {
+        self.child_names.extend(names.into_iter());
+        self.child_ids.extend(self.child_names.iter().enumerate().map(|(idx, name)| (name.clone(), idx)));
+        self.graph.define_children_names(&self.child_names, &self.child_ids);
         self
+    }
+
+    /// Transforms a named child's id to its name
+    pub fn child_name(&self, id: usize) -> &str {
+        &self.child_names[id]
+    }
+
+    /// Returns the id of a named child
+    pub fn child_id(&self, name: &str) -> usize {
+        self.child_ids[name]
     }
 
     /// Generates a new key representing a term.  
@@ -126,7 +148,8 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
     pub fn get_named_child_key(&mut self, parent: TcKey, name: &str) -> Result<TcKey, TcErr<V>> {
-        let TypeChecker { graph, variables: _, context, child_names } = self;
+        let TypeChecker { graph, variables: _, context, child_names: _, child_ids: _ } = self;
+
         let key = graph.named_child(parent, name, context)?;
         // *self = TypeChecker { graph, variables, context };
         Ok(key)
@@ -160,11 +183,11 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         self.graph.lift(variant, Children::Indexed(sub_types))
     }
 
-    pub fn lift_into_named(&mut self, variant: V, mut sub_types: HashMap<String, TcKey>) -> TcKey {
+    pub fn lift_into_named(&mut self, variant: V, mut sub_types: HashMap<usize, TcKey>) -> TcKey {
         self.lift_partially_named(variant, sub_types.drain().map(|(k, v)| (k, Some(v))).collect())
     }
 
-    pub fn lift_partially_named(&mut self, variant: V, sub_types: HashMap<String, Option<TcKey>>) -> TcKey {
+    pub fn lift_partially_named(&mut self, variant: V, sub_types: HashMap<usize, Option<TcKey>>) -> TcKey {
         self.graph.lift(variant, Children::Named(sub_types))
     }
 
@@ -234,6 +257,10 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// Contains the affected key, its inferred or explicitly assigned variant, and the name of the child that
     /// was attempted to be accessed.
     FieldDoesNotExist(TcKey, V, HashSet<String>),
+    /// This error occurs when a child is accessed by a name that is not known to the type checker.
+    /// Which names are known is defined by [Self::define_children_names].
+    /// Contains the key on which the unknown field was expected and the name of the unknown field.
+    UnknownField(TcKey, String),
     /// Attempted an named access to a child on a type that has indexed children.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the name of the child that
     /// was attempted to be accessed.
@@ -279,7 +306,6 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
     /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
     /// The error contains the affected key, the name of the child, the preliminary result of which a child construction failed, and the error
-    /// reported by the construction of the child.
     NamedChildConstruction(TcKey, String, Preliminary<V>, V::Err),
     /// This error reports cyclic non-equality dependencies in the constraint graph.
     /// Example: Key 1 is more concrete than Key 2, which is more concrete than Key 3, which is more concrete than Key 1.
