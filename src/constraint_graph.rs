@@ -363,10 +363,7 @@ impl<V: ContextSensitiveVariant> Type<V> {
                 .map(|k| {
                     (
                         children_l.get(k).cloned().flatten().zip(children_r.get(k).cloned().flatten()),
-                        (
-                            *k,
-                            children_l.get(k).cloned().flatten().or_else(|| children_r.get(k).cloned().flatten()),
-                        ),
+                        (*k, children_l.get(k).cloned().flatten().or_else(|| children_r.get(k).cloned().flatten())),
                     )
                 })
                 .unzip();

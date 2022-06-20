@@ -94,22 +94,12 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         }
     }
 
-    /// Defines all possible names that should be allowed for child accesses.
+    /// Defines all possible names that should be allowed for named child accesses.
     pub fn define_children_names(mut self, names: HashSet<String>) -> Self {
         self.child_names.extend(names.into_iter());
         self.child_ids.extend(self.child_names.iter().enumerate().map(|(idx, name)| (name.clone(), idx)));
         self.graph.define_children_names(&self.child_names, &self.child_ids);
         self
-    }
-
-    /// Transforms a named child's id to its name
-    pub fn child_name(&self, id: usize) -> &str {
-        &self.child_names[id]
-    }
-
-    /// Returns the id of a named child
-    pub fn child_id(&self, name: &str) -> usize {
-        self.child_ids[name]
     }
 
     /// Generates a new key representing a term.  
@@ -142,11 +132,11 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         Ok(key)
     }
 
-    /// Provides a key to the `nth` child of the type behind `parent`.
-    /// This imposes the restriction that `parent` resolves to a type that has at least an arity of `nth`.
+    /// Provides a key to the child with name `name` of the type behind `parent`.
+    /// This imposes the restriction that `parent` resolves to a type that has named children including the given one.
     /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
-    /// Calling this function several times on a parent with the same `nth` results in the same key.
+    /// Calling this function several times on a parent with the same `name` results in the same key.
     pub fn get_named_child_key(&mut self, parent: TcKey, name: &str) -> Result<TcKey, TcErr<V>> {
         let TypeChecker { graph, variables: _, context, child_names: _, child_ids: _ } = self;
 
@@ -173,22 +163,24 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         Ok(())
     }
 
-    /// Lifts a collection of keys as children into a certain recursive variant.
+    /// Lifts a collection of keys as indexed children into a certain recursive variant.
     pub fn lift_into_indexed(&mut self, variant: V, mut sub_types: Vec<TcKey>) -> TcKey {
         self.lift_partially_indexed(variant, sub_types.drain(..).map(Some).collect())
     }
 
-    /// Lifts a collection of keys as subset of children into a certain recursive variant.
+    /// Lifts a collection of keys as subset of indexed children into a certain recursive variant.
     pub fn lift_partially_indexed(&mut self, variant: V, sub_types: Vec<Option<TcKey>>) -> TcKey {
         self.graph.lift(variant, Children::Indexed(sub_types))
     }
 
-    pub fn lift_into_named(&mut self, variant: V, mut sub_types: HashMap<usize, TcKey>) -> TcKey {
+    /// Lifts a collection of keys as named children into a certain recursive variant.
+    pub fn lift_into_named(&mut self, variant: V, mut sub_types: HashMap<String, TcKey>) -> TcKey {
         self.lift_partially_named(variant, sub_types.drain().map(|(k, v)| (k, Some(v))).collect())
     }
 
-    pub fn lift_partially_named(&mut self, variant: V, sub_types: HashMap<usize, Option<TcKey>>) -> TcKey {
-        self.graph.lift(variant, Children::Named(sub_types))
+    /// Lifts a collection of keys as subset of named children into a certain recursive variant.
+    pub fn lift_partially_named(&mut self, variant: V, mut sub_types: HashMap<String, Option<TcKey>>) -> TcKey {
+        self.graph.lift(variant, Children::Named(sub_types.drain().map(|(k, v)| (self.child_ids[&k], v)).collect()))
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
@@ -252,14 +244,14 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
     ChildAccessOutOfBound(TcKey, V, usize),
-    /// This error occurs when a constraint accesses the child with the given name of a type and its variant turns out to
-    /// not know this child.
-    /// Contains the affected key, its inferred or explicitly assigned variant, and the name of the child that
-    /// was attempted to be accessed.
+    /// This error occurs when a constraint imposes the existing of children with the given names of a type and its variant turns out to
+    /// not know these children.
+    /// Contains the affected key, its inferred or explicitly assigned variant, and the names of the children that
+    /// do not exist for the variant.
     FieldDoesNotExist(TcKey, V, HashSet<String>),
-    /// This error occurs when a child is accessed by a name that is not known to the type checker.
-    /// Which names are known is defined by [Self::define_children_names].
-    /// Contains the key on which the unknown field was expected and the name of the unknown field.
+    /// This error occurs when a child, accessed by a name, is not known to the type checker.
+    /// Which names are known is defined by [TypeChecker::define_children_names].
+    /// Contains the key on which the unknown child was expected and the name of the child.
     UnknownField(TcKey, String),
     /// Attempted an named access to a child on a type that has indexed children.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the name of the child that
@@ -292,17 +284,18 @@ pub enum TcErr<V: ContextSensitiveVariant> {
         reported_fields: HashSet<String>,
     },
     /// The access kind of the types children did not match during a meet.
+    /// I.e. The type checker tried to meet a variant with named children with one with indexed children.
     ChildKindMismatch(TcKey, V, TcKey, V),
     /// An error reporting a failed type construction.  Contains the affected key, the preliminary result for which the construction failed, and the
     /// error reported by the construction.
     Construction(TcKey, Preliminary<V>, V::Err),
-    /// This error indicates that a variant requires children, for one of which the construction failed.
+    /// This error indicates that a variant requires indexed children, for one of which the construction failed.
     /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
     /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
     /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
     /// reported by the construction of the child.
     IndexedChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
-    /// This error indicates that a variant requires children, for one of which the construction failed.
+    /// This error indicates that a variant requires named children, for one of which the construction failed.
     /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
     /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
     /// The error contains the affected key, the name of the child, the preliminary result of which a child construction failed, and the error
