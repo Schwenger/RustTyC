@@ -253,7 +253,6 @@ impl<V: ContextSensitiveVariant> Type<V> {
         let mut no_children = false;
 
         // println!("Meeting: {:?} and {:?}", lhs, rhs);
-        dbg!(&lhs.children, &rhs.children, &lhs.variant.arity(ctx), &rhs.variant.arity(ctx));
 
         match (&lhs.children, &rhs.children) {
             (Children::Indexed(_), Children::Named(_)) | (Children::Named(_), Children::Indexed(_)) => {
