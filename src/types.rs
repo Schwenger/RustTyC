@@ -25,15 +25,15 @@ use std::iter::FromIterator;
 /// * The result of a meet needs to be more or equally concrete than either argument.
 /// * Meeting two variants returns the greatest upper bound, i.e., the type variant that is more or equally concrete to either argument _and_ there is no other, less concrete type meeting this requirement.
 /// This especially entails that meeting any type `T` with an unconstrained type returns `T`.
-/// The arguments of the meet functions are [Partial], i.e., the combination of a variant and the least number of children the respective type has.
+/// The arguments of the meet functions are [Partial], i.e., the combination of a variant and the information about the children of the respective type.
 /// This is of particular interest for types that are not fully resolved and thus do not have a fixed arity, yet.  An unconstained type variant could have
 /// a sub-type because it will be later determined to be an "Option" or "Tuple" type.  More details in the next section.
 ///
 /// ## Arity
 /// Type can be recursive, i.e., they have a number of subtypes, their "children".
 /// An integer, for example, has no children and is thus 0-ary.  An optional type on the other hand is 1-ary, tuples might have an arbitrary arity.
-/// During the inference process, the arity might be undetermined:  the unconstrained type will resolve to something with an arity, but the value is not clear, yet.
-/// Hence, its least arity is initially 0 and potentially increases when more information was collected.
+/// During the inference process, the arity might be undetermined: the unconstrained type will resolve to something with an arity, but the value is not clear, yet.
+/// Hence, its arity is initially variable and potentially refines when more information was collected.
 ///
 /// The type checking procedure keeps track of types and their potential children.
 /// For this, it requires some guarantees when it comes to the arity:
@@ -59,9 +59,11 @@ pub trait Variant: Sized + Clone + Debug + Eq {
 
     /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
     /// Refer to [Variant] for the responsibilities of this function.
-    /// In particular: `usize::max(lhs.least_arity, rhs.least_arity) <= result.least_arity`
-    /// In the successful case, the variant and arity of the partial have to match, i.e., if the [Arity]
-    /// is fixed with value `n`, then [Partial::least_arity] needs to be `n` as well.
+    /// In particular: `usize::max(lhs.children, rhs.children) <= result.children` in the indexed case and
+    /// `lhs.children ∪ rhs.children ⊆ result.children` in the named case.
+    /// If successful, the variant and arity of the resulting partial have to match, i.e., if the [Arity] fo the variant
+    /// is fixed as `n` then [Partial::children] needs to be `n` as well.
+    /// See [Arity] for a more detailed description of this relation.
     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err>;
 
     /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
@@ -89,9 +91,11 @@ pub trait ContextSensitiveVariant: Sized + Clone + Debug {
 
     /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
     /// Refer to [Variant] for the responsibilities of this function.
-    /// In particular: `usize::max(lhs.least_arity, rhs.least_arity) <= result.least_arity`
-    /// In the successful case, the variant and arity of the partial have to match, i.e., if the [Arity]
-    /// is fixed with value `n`, then [Partial::least_arity] needs to be `n` as well.
+    /// In particular: `usize::max(lhs.children, rhs.children) <= result.children` in the indexed case and
+    /// `lhs.children ∪ rhs.children ⊆ result.children` in the named case.
+    /// If successful, the variant and arity of the resulting partial have to match, i.e., if the [Arity] fo the variant
+    /// is fixed as `n` then [Partial::children] needs to be `n` as well.
+    /// See [Arity] for a more detailed description of this relation.
     fn meet(lhs: Partial<Self>, rhs: Partial<Self>, ctx: &Self::Context) -> Result<Partial<Self>, Self::Err>;
 
     /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
@@ -127,15 +131,20 @@ impl<V: Variant> ContextSensitiveVariant for V {
 }
 
 /// Represents the arity of a [Variant] or [ContextSensitiveVariant].
+/// The arity of a variant corresponds directly to the [ChildConstraint] of a type in the following manner:
+/// * `Arity::Variable <=> ChildConstraint::Unconstrained`
+/// * `Arity::None <=> ChildConstraint::NoChildren`
+/// * `Arity::FixedIndexed(idx) <=> ChildConstraint::Indexed(idx)`
+/// * `Arity::FixedNamed(names) <=> ChildConstraint::Named(names)`
 #[derive(Debug, Clone)]
 pub enum Arity<R: Debug + Clone + Hash> {
     /// The Type should have no children at all.
     None,
     /// The arity is variable, i.e., it does not have a specific value.
     Variable,
-    /// The arity has a fixed value.
+    /// The arity is fixed and the children are accessed by index.
     FixedIndexed(usize),
-    /// The arity has a fixed set of fields given by their id.
+    /// The arity is fixed and the children are accessed by name.
     FixedNamed(HashSet<R>),
 }
 
@@ -152,6 +161,7 @@ impl<R: Debug + Clone + Hash> Arity<R> {
 }
 
 impl Arity<String> {
+    /// Substitutes the strings in case of `FixedNamed` with usizes according to the given map.
     pub(crate) fn substitute(&self, child_ids: &HashMap<String, usize>) -> Arity<usize> {
         match self {
             Arity::Variable => Arity::Variable,
@@ -173,21 +183,22 @@ impl From<Arity<usize>> for ChildConstraint {
 }
 
 #[derive(Debug, Clone)]
+/// Represents the current (incomplete) information the type checker has about the children of a type.
 pub enum ChildConstraint {
-    /// There should be no children
+    /// The type should not have any children.
     NoChildren,
-    /// Children can either be indexed or named
+    /// There is no information about the children yet. They can be either `NoChildren`, `Indexed` or `Named`
     Unconstrained,
-    /// Children are accessed through indices.
+    /// Children are expected to be accessed through indices.
     /// The number represents the least amount of children the type will have.
     Indexed(usize),
-    /// Children are accessed by name.
+    /// Children are expected to be accessed by names.
     /// The HashSet represents the minimum set of fields required.
     Named(HashSet<usize>),
 }
 
 impl ChildConstraint {
-    ///The least number of children there are
+    /// The least number of children there are
     pub fn len(&self) -> usize {
         match self {
             ChildConstraint::Unconstrained => 0,
@@ -197,6 +208,8 @@ impl ChildConstraint {
         }
     }
 
+    /// Expects the children to be accessed by name and returns the HashSet representing the minimum set of fields the type will have.
+    /// Panics if th children are not accessed by name.
     pub fn names(&self) -> &HashSet<usize> {
         match self {
             ChildConstraint::Named(set) => set,
@@ -206,6 +219,8 @@ impl ChildConstraint {
         }
     }
 
+    /// Expects the children to be accessed through indices and returns least amount of children the type will have.
+    /// Panics if th children are not accessed through indices.
     pub fn index(&self) -> usize {
         match self {
             ChildConstraint::Indexed(idx) => *idx,
@@ -218,21 +233,26 @@ impl ChildConstraint {
 
 /// Partial is a container for a [ContextSensitiveVariant] and the least arity a particular instance of this variant currently has. Only used for [ContextSensitiveVariant::meet()].
 ///
-/// The `least_arity` indicates how many children this instance of the variance has according to the current state of the type checker.
-/// The value might increase in the future but never decrease.
+/// The `children` represent the current knowledge of the type checker about the children of the type.
+/// See [ChildConstraint] for further information.
 #[derive(Debug, Clone)]
 pub struct Partial<V: Sized> {
     /// The variant represented by this `Partial`.
     pub variant: V,
-    ///The least requirement for children.
+    /// The least requirement for children.
     pub children: ChildConstraint,
 }
 
+/// Represents the current children of a type.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Children {
+    /// There are no known children yet.
     Unknown,
+    /// The type doesn't have any children.
     None,
+    /// The type has indexed children represented by the collection within.
     Indexed(Vec<Option<TcKey>>),
+    /// The type has named children represented by the collection within.
     Named(HashMap<usize, Option<TcKey>>),
 }
 
@@ -314,14 +334,20 @@ pub type PreliminaryTypeTable<V> = HashMap<TcKey, Preliminary<V>>;
 /// A type table containing the constructed type of the inferred [ContextSensitiveVariant] for each [TcKey].  Requires [ContextSensitiveVariant] to implement [Constructable].
 pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
 
+/// Represents the final resolved children of a type.
 #[derive(Debug, Clone)]
 pub enum ResolvedChildren<T: Clone + Debug> {
+    /// The type doesn't have any children.
     None,
+    /// The type has children accessed by index, given by the collection.
     Indexed(Vec<T>),
+    /// The type has children accessed by name, given by the collection.
     Named(HashMap<String, T>),
 }
 
 impl<T: Clone + Debug> ResolvedChildren<T> {
+    /// Expects the children to be indexed and returns the inner collection.
+    /// Panics, if the children are not indexed.
     pub fn into_indexed(self) -> Vec<T> {
         match self {
             ResolvedChildren::Indexed(res) => res,
@@ -329,6 +355,8 @@ impl<T: Clone + Debug> ResolvedChildren<T> {
         }
     }
 
+    /// Expects the children to be named and returns the inner collection.
+    /// Panics, if the children are not named.
     pub fn into_named(self) -> HashMap<String, T> {
         match self {
             ResolvedChildren::Named(res) => res,
