@@ -5,12 +5,44 @@
 //! * [Constructable]: A variant is constructable if it can be transformed into a concrete type, i.e., [Constructable::Type].
 //! * [TypeTable] and [PreliminaryTypeTable] are mappings from a [TcKey] to a concrete [Constructable::Type] or [Preliminary] type.
 
-use std::{collections::HashMap, fmt::Debug};
+use std::fmt::Debug;
 
-use crate::TcKey;
-use std::collections::HashSet;
-use std::hash::Hash;
-use std::iter::FromIterator;
+use crate::children::{ChildConstraint, Arity};
+
+/// A [Variant] which requires a context for meet operations and equality checks.
+///
+/// See [Variant] for general information and requirements on the implementation.
+/// The context will ever only be borrowed without further requirements on it, in particular,
+/// it does not have to implement [Clone].
+pub trait ContextType: Sized + Clone + Debug {
+    /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
+    /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
+    type Err: Debug;
+
+    /// Represents the meet- and equality context.
+    type Context: Debug;
+
+    /// Returns the unconstrained, most abstract type.
+    fn top() -> Self;
+
+    /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
+    /// Refer to [Variant] for the responsibilities of this function.
+    /// In particular: `usize::max(lhs.children, rhs.children) <= result.children` in the indexed case and
+    /// `lhs.children ∪ rhs.children ⊆ result.children` in the named case.
+    /// If successful, the variant and arity of the resulting partial have to match, i.e., if the [Arity] fo the variant
+    /// is fixed as `n` then [Partial::children] needs to be `n` as well.
+    /// See [Arity] for a more detailed description of this relation.
+    fn meet(lhs: Infered<Self>, rhs: Infered<Self>, ctx: &Self::Context) -> Result<Infered<Self>, Self::Err>;
+
+    /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
+    /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
+    /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
+    /// the tuple has a variable arity and potentially a different variant.
+    fn arity(&self, ctx: &Self::Context) -> Arity<String>;
+
+    /// Context-sensitive version of [Eq].  All rules apply.
+    fn equal(this: &Self, that: &Self, ctx: &Self::Context) -> bool;
+}
 
 /// A variant that will be inferred during the type checking procedure.
 ///
@@ -49,7 +81,7 @@ use std::iter::FromIterator;
 /// If the variant requires a context for the meet and/or equality operation, refer to [ContextSensitiveVariant].
 /// Each [Variant] automatically implements [ContextSensitiveVariant].
 ///
-pub trait Variant: Sized + Clone + Debug + Eq {
+pub trait Type: Sized + Clone + Debug + Eq {
     /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
     /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
     type Err: Debug;
@@ -64,7 +96,7 @@ pub trait Variant: Sized + Clone + Debug + Eq {
     /// If successful, the variant and arity of the resulting partial have to match, i.e., if the [Arity] fo the variant
     /// is fixed as `n` then [Partial::children] needs to be `n` as well.
     /// See [Arity] for a more detailed description of this relation.
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err>;
+    fn meet(lhs: Infered<Self>, rhs: Infered<Self>) -> Result<Infered<Self>, Self::Err>;
 
     /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
@@ -73,42 +105,7 @@ pub trait Variant: Sized + Clone + Debug + Eq {
     fn arity(&self) -> Arity<String>;
 }
 
-/// A [Variant] which requires a context for meet operations and equality checks.
-///
-/// See [Variant] for general information and requirements on the implementation.
-/// The context will ever only be borrowed without further requirements on it, in particular,
-/// it does not have to implement [Clone].
-pub trait ContextSensitiveVariant: Sized + Clone + Debug {
-    /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
-    /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
-    type Err: Debug;
-
-    /// Represents the meet- and equality context.
-    type Context: Debug;
-
-    /// Returns the unconstrained, most abstract type.
-    fn top() -> Self;
-
-    /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
-    /// Refer to [Variant] for the responsibilities of this function.
-    /// In particular: `usize::max(lhs.children, rhs.children) <= result.children` in the indexed case and
-    /// `lhs.children ∪ rhs.children ⊆ result.children` in the named case.
-    /// If successful, the variant and arity of the resulting partial have to match, i.e., if the [Arity] fo the variant
-    /// is fixed as `n` then [Partial::children] needs to be `n` as well.
-    /// See [Arity] for a more detailed description of this relation.
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, ctx: &Self::Context) -> Result<Partial<Self>, Self::Err>;
-
-    /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
-    /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
-    /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
-    /// the tuple has a variable arity and potentially a different variant.
-    fn arity(&self, ctx: &Self::Context) -> Arity<String>;
-
-    /// Context-sensitive version of [Eq].  All rules apply.
-    fn equal(this: &Self, that: &Self, ctx: &Self::Context) -> bool;
-}
-
-impl<V: Variant> ContextSensitiveVariant for V {
+impl<V: Type> ContextType for V {
     type Err = V::Err;
 
     type Context = ();
@@ -117,7 +114,7 @@ impl<V: Variant> ContextSensitiveVariant for V {
         V::top()
     }
 
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, _ctx: &Self::Context) -> Result<Partial<Self>, Self::Err> {
+    fn meet(lhs: Infered<Self>, rhs: Infered<Self>, _ctx: &Self::Context) -> Result<Infered<Self>, Self::Err> {
         V::meet(lhs, rhs)
     }
 
@@ -130,271 +127,21 @@ impl<V: Variant> ContextSensitiveVariant for V {
     }
 }
 
-/// Represents the arity of a [Variant] or [ContextSensitiveVariant].
-/// The arity of a variant corresponds directly to the [ChildConstraint] of a type in the following manner:
-/// * `Arity::Variable <=> ChildConstraint::Unconstrained`
-/// * `Arity::None <=> ChildConstraint::NoChildren`
-/// * `Arity::FixedIndexed(idx) <=> ChildConstraint::Indexed(idx)`
-/// * `Arity::FixedNamed(names) <=> ChildConstraint::Named(names)`
-#[derive(Debug, Clone)]
-pub enum Arity<R: Debug + Clone + Hash> {
-    /// The Type should have no children at all.
-    None,
-    /// The arity is variable, i.e., it does not have a specific value.
-    Variable,
-    /// The arity is fixed and the children are accessed by index.
-    FixedIndexed(usize),
-    /// The arity is fixed and the children are accessed by name.
-    FixedNamed(HashSet<R>),
-}
 
-impl<R: Debug + Clone + Hash> Arity<R> {
-    /// Transform `self` into an option, i.e., it will yield a `Some` with its arity if defined and `None` otherwise.
-    pub(crate) fn to_opt(&self) -> Option<usize> {
-        match self {
-            Arity::Variable => None,
-            Arity::None => Some(0),
-            Arity::FixedIndexed(n) => Some(*n),
-            Arity::FixedNamed(s) => Some(s.len()),
-        }
-    }
-}
-
-impl Arity<String> {
-    /// Substitutes the strings in case of `FixedNamed` with usizes according to the given map.
-    pub(crate) fn substitute(&self, child_ids: &HashMap<String, usize>) -> Arity<usize> {
-        match self {
-            Arity::Variable => Arity::Variable,
-            Arity::None => Arity::None,
-            Arity::FixedIndexed(idx) => Arity::FixedIndexed(*idx),
-            Arity::FixedNamed(names) => Arity::FixedNamed(names.iter().map(|k| child_ids[k]).collect()),
-        }
-    }
-}
-impl From<Arity<usize>> for ChildConstraint {
-    fn from(a: Arity<usize>) -> Self {
-        match a {
-            Arity::Variable => ChildConstraint::Unconstrained,
-            Arity::None => ChildConstraint::NoChildren,
-            Arity::FixedIndexed(idx) => ChildConstraint::Indexed(idx),
-            Arity::FixedNamed(names) => ChildConstraint::Named(names),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-/// Represents the current (incomplete) information the type checker has about the children of a type.
-pub enum ChildConstraint {
-    /// The type should not have any children.
-    NoChildren,
-    /// There is no information about the children yet. They can be either `NoChildren`, `Indexed` or `Named`
-    Unconstrained,
-    /// Children are expected to be accessed through indices.
-    /// The number represents the least amount of children the type will have.
-    Indexed(usize),
-    /// Children are expected to be accessed by names.
-    /// The HashSet represents the minimum set of fields required.
-    Named(HashSet<usize>),
-}
-
-impl ChildConstraint {
-    /// The least number of children there are
-    pub fn len(&self) -> usize {
-        match self {
-            ChildConstraint::Unconstrained => 0,
-            ChildConstraint::NoChildren => 0,
-            ChildConstraint::Indexed(size) => *size,
-            ChildConstraint::Named(set) => set.len(),
-        }
-    }
-
-    /// Expects the children to be accessed by name and returns the HashSet representing the minimum set of fields the type will have.
-    /// Panics if th children are not accessed by name.
-    pub fn names(&self) -> &HashSet<usize> {
-        match self {
-            ChildConstraint::Named(set) => set,
-            ChildConstraint::Indexed(_) | ChildConstraint::Unconstrained | ChildConstraint::NoChildren => {
-                panic!("Child constraint is not named")
-            }
-        }
-    }
-
-    /// Expects the children to be accessed through indices and returns least amount of children the type will have.
-    /// Panics if th children are not accessed through indices.
-    pub fn index(&self) -> usize {
-        match self {
-            ChildConstraint::Indexed(idx) => *idx,
-            ChildConstraint::Named(_) | ChildConstraint::Unconstrained | ChildConstraint::NoChildren => {
-                panic!("Child constraint is not named")
-            }
-        }
-    }
-}
 
 /// Partial is a container for a [ContextSensitiveVariant] and the least arity a particular instance of this variant currently has. Only used for [ContextSensitiveVariant::meet()].
 ///
 /// The `children` represent the current knowledge of the type checker about the children of the type.
 /// See [ChildConstraint] for further information.
 #[derive(Debug, Clone)]
-pub struct Partial<V: Sized> {
+pub struct Infered<V: Sized> {
     /// The variant represented by this `Partial`.
     pub variant: V,
     /// The least requirement for children.
     pub children: ChildConstraint,
 }
 
-/// Represents the current children of a type.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Children {
-    /// There are no known children yet.
-    Unknown,
-    /// The type doesn't have any children.
-    None,
-    /// The type has indexed children represented by the collection within.
-    Indexed(Vec<Option<TcKey>>),
-    /// The type has named children represented by the collection within.
-    Named(HashMap<usize, Option<TcKey>>),
-}
 
-impl Children {
-    pub(crate) fn len(&self) -> Option<usize> {
-        match self {
-            Children::Unknown => None,
-            Children::None => Some(0),
-            Children::Indexed(c) => Some(c.len()),
-            Children::Named(c) => Some(c.len()),
-        }
-    }
 
-    pub(crate) fn is_indexed(&self) -> bool {
-        matches!(self, Children::Indexed(_))
-    }
 
-    pub(crate) fn is_named(&self) -> bool {
-        matches!(self, Children::Named(_))
-    }
 
-    pub(crate) fn indexed(&self) -> Option<&Vec<Option<TcKey>>> {
-        match self {
-            Children::Indexed(res) => Some(res),
-            Children::Unknown | Children::Named(_) | Children::None => None,
-        }
-    }
-
-    pub(crate) fn indexed_mut(&mut self) -> Option<&mut Vec<Option<TcKey>>> {
-        match self {
-            Children::Indexed(res) => Some(res),
-            Children::Unknown => {
-                *self = Children::Indexed(vec![]);
-                self.indexed_mut()
-            }
-            Children::Named(_) | Children::None => None,
-        }
-    }
-
-    pub(crate) fn named(&self) -> Option<&HashMap<usize, Option<TcKey>>> {
-        match self {
-            Children::Named(res) => Some(res),
-            Children::Unknown | Children::Indexed(_) | Children::None => None,
-        }
-    }
-
-    pub(crate) fn named_mut(&mut self) -> Option<&mut HashMap<usize, Option<TcKey>>> {
-        match self {
-            Children::Named(res) => Some(res),
-            Children::Unknown => {
-                *self = Children::Named(HashMap::new());
-                self.named_mut()
-            }
-            Children::Indexed(_) | Children::None => None,
-        }
-    }
-
-    pub(crate) fn to_constraint(&self) -> ChildConstraint {
-        match self {
-            Children::Unknown => ChildConstraint::Unconstrained,
-            Children::None => ChildConstraint::NoChildren,
-            Children::Indexed(c) => ChildConstraint::Indexed(c.len()),
-            Children::Named(c) => ChildConstraint::Named(c.keys().copied().collect()),
-        }
-    }
-}
-
-/// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].
-#[derive(Debug, Clone)]
-pub struct Preliminary<V: ContextSensitiveVariant> {
-    /// The type variant of the entity represented by this `Preliminary`.
-    pub variant: V,
-    /// The [TcKey]s of the children of this variant.
-    pub children: Children,
-}
-
-/// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [ContextSensitiveVariant] does not implement [Constructable].
-pub type PreliminaryTypeTable<V> = HashMap<TcKey, Preliminary<V>>;
-/// A type table containing the constructed type of the inferred [ContextSensitiveVariant] for each [TcKey].  Requires [ContextSensitiveVariant] to implement [Constructable].
-pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
-
-/// Represents the final resolved children of a type.
-#[derive(Debug, Clone)]
-pub enum ResolvedChildren<T: Clone + Debug> {
-    /// The type doesn't have any children.
-    None,
-    /// The type has children accessed by index, given by the collection.
-    Indexed(Vec<T>),
-    /// The type has children accessed by name, given by the collection.
-    Named(HashMap<String, T>),
-}
-
-impl<T: Clone + Debug> ResolvedChildren<T> {
-    /// Expects the children to be indexed and returns the inner collection.
-    /// Panics, if the children are not indexed.
-    pub fn into_indexed(self) -> Vec<T> {
-        match self {
-            ResolvedChildren::Indexed(res) => res,
-            ResolvedChildren::Named(_) | ResolvedChildren::None => panic!("Children did not resolve as indexed."),
-        }
-    }
-
-    /// Expects the children to be named and returns the inner collection.
-    /// Panics, if the children are not named.
-    pub fn into_named(self) -> HashMap<String, T> {
-        match self {
-            ResolvedChildren::Named(res) => res,
-            ResolvedChildren::Indexed(_) | ResolvedChildren::None => panic!("Children did not resolve as named."),
-        }
-    }
-}
-
-impl<T: Clone + Debug> FromIterator<T> for ResolvedChildren<T> {
-    fn from_iter<IT: IntoIterator<Item = T>>(iter: IT) -> Self {
-        let mut iter = iter.into_iter().peekable();
-        if iter.peek().is_some() {
-            ResolvedChildren::Indexed(Vec::from_iter(iter))
-        } else {
-            ResolvedChildren::None
-        }
-    }
-}
-
-impl<T: Clone + Debug> FromIterator<(String, T)> for ResolvedChildren<T> {
-    fn from_iter<IT: IntoIterator<Item = (String, T)>>(iter: IT) -> Self {
-        let mut iter = iter.into_iter().peekable();
-        if iter.peek().is_some() {
-            ResolvedChildren::Named(HashMap::from_iter(iter))
-        } else {
-            ResolvedChildren::None
-        }
-    }
-}
-
-/// A type implementing this trait can potentially be transformed into a concrete representation. This transformation can fail.
-pub trait Constructable: ContextSensitiveVariant {
-    /// The result type of the attempted construction.
-    type Type: Clone + Debug;
-    /// Attempts to transform `self` into an more concrete `Self::Type`.
-    /// Returns a [ContextSensitiveVariant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
-    fn construct(
-        &self,
-        children: ResolvedChildren<Self::Type>,
-    ) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err>;
-}

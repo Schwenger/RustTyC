@@ -1,7 +1,7 @@
 use crate::types::{ChildConstraint, ResolvedChildren};
 use crate::{
-    type_checker::VarlessTypeChecker, types::Arity, Constructable, ContextSensitiveVariant, Partial,
-    PreliminaryTypeTable, TcErr, TcKey, TcVar, TypeChecker, TypeTable, Variant as TcVariant,
+    type_checker::VarlessTypeChecker, types::Arity, Constructable, ContextType, Infered,
+    PreliminaryTypeTable, TcErr, TcKey, TcVar, TypeChecker, TypeTable, Type as TcVariant,
 };
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
@@ -31,14 +31,14 @@ struct Variable(usize);
 
 impl TcVar for Variable {}
 
-impl TcVariant for Variant {
+impl Type for Variant {
     type Err = String;
 
     fn top() -> Self {
         Self::Any
     }
 
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
+    fn meet(lhs: Infered<Self>, rhs: Infered<Self>) -> Result<Infered<Self>, Self::Err> {
         use Variant::*;
         assert_eq!(lhs.children.len(), 0, "spurious child");
         assert_eq!(rhs.children.len(), 0, "spurious child");
@@ -54,7 +54,7 @@ impl TcVariant for Variant {
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
             (Numeric, Numeric) => Ok(Numeric),
         }?;
-        Ok(Partial { variant, children: ChildConstraint::NoChildren })
+        Ok(Infered { variant, children: ChildConstraint::NoChildren })
     }
 
     fn arity(&self) -> Arity<String> {
@@ -388,7 +388,7 @@ enum StructVariant {
     Struct(String),
 }
 
-impl ContextSensitiveVariant for StructVariant {
+impl ContextType for StructVariant {
     type Err = String;
     type Context = HashMap<String, HashSet<String>>;
 
@@ -396,9 +396,9 @@ impl ContextSensitiveVariant for StructVariant {
         StructVariant::Any
     }
 
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, _ctx: &Self::Context) -> Result<Partial<Self>, Self::Err> {
-        let Partial { variant: lhs, children: l_constraint } = lhs;
-        let Partial { variant: rhs, children: r_constraint } = rhs;
+    fn meet(lhs: Infered<Self>, rhs: Infered<Self>, _ctx: &Self::Context) -> Result<Infered<Self>, Self::Err> {
+        let Infered { variant: lhs, children: l_constraint } = lhs;
+        let Infered { variant: rhs, children: r_constraint } = rhs;
 
         let (new_var, new_constr) = match (lhs, rhs) {
             (StructVariant::Any, other) => (other, r_constraint),
@@ -422,7 +422,7 @@ impl ContextSensitiveVariant for StructVariant {
             }
             (StructVariant::Struct(_), _) => return Err("Structs only with structs with the same name".into()),
         };
-        Ok(Partial { variant: new_var, children: new_constr })
+        Ok(Infered { variant: new_var, children: new_constr })
     }
 
     fn arity(&self, ctx: &Self::Context) -> Arity<String> {
@@ -445,7 +445,7 @@ impl Constructable for StructVariant {
     fn construct(
         &self,
         children: ResolvedChildren<Self::Type>,
-    ) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err> {
+    ) -> Result<Self::Type, <Self as ContextType>::Err> {
         match self {
             StructVariant::Any => Ok(ConcreteStructType::String),
             StructVariant::String => Ok(ConcreteStructType::String),

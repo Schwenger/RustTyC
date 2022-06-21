@@ -1,6 +1,6 @@
 use rusttyc::types::{ChildConstraint, ResolvedChildren};
 use rusttyc::{
-    types::Arity, Constructable, Partial, TcErr, TcKey, TcVar, TypeChecker, Variant as TcVariant, VarlessTypeChecker,
+    types::Arity, Constructable, Infered, TcErr, TcKey, TcVar, TypeChecker, Type as TcVariant, VarlessTypeChecker,
 };
 use std::cmp::max;
 use std::convert::TryInto;
@@ -29,14 +29,14 @@ struct Variable(usize);
 
 impl TcVar for Variable {}
 
-impl TcVariant for Variant {
+impl Type for Variant {
     type Err = String;
 
     fn top() -> Self {
         Self::Any
     }
 
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
+    fn meet(lhs: Infered<Self>, rhs: Infered<Self>) -> Result<Infered<Self>, Self::Err> {
         use Variant::*;
         assert_eq!(lhs.children.len(), 0, "spurious child");
         assert_eq!(rhs.children.len(), 0, "spurious child");
@@ -52,7 +52,7 @@ impl TcVariant for Variant {
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
             (Numeric, Numeric) => Ok(Numeric),
         }?;
-        Ok(Partial { variant, children: ChildConstraint::Indexed(0) })
+        Ok(Infered { variant, children: ChildConstraint::Indexed(0) })
     }
 
     fn arity(&self) -> Arity<String> {

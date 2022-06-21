@@ -1,8 +1,10 @@
+use crate::Type;
+use crate::children::Children;
 use crate::constraint_graph::ConstraintGraph;
-use crate::types::{Children, Constructable, ContextSensitiveVariant, PreliminaryTypeTable, TypeTable, Variant};
+use crate::type_table::{TypeTable, Preliminary, PreliminaryTypeTable, Constructable};
+use crate::types::ContextType;
 use crate::{
     keys::{Constraint, TcKey},
-    types::Preliminary,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -42,7 +44,7 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 /// # Example
 /// See [`crate documentation`](index.html).
 #[derive(Debug, Clone)]
-pub struct TypeChecker<V: ContextSensitiveVariant, Var: TcVar> {
+pub struct TypeChecker<V: ContextType, Var: TcVar> {
     variables: HashMap<Var, TcKey>,
     graph: ConstraintGraph<V>,
     context: V::Context,
@@ -53,7 +55,7 @@ pub struct TypeChecker<V: ContextSensitiveVariant, Var: TcVar> {
     child_ids: HashMap<String, usize>,
 }
 
-impl<V: Variant, Var: TcVar> Default for TypeChecker<V, Var> {
+impl<V: Type, Var: TcVar> Default for TypeChecker<V, Var> {
     fn default() -> Self {
         TypeChecker::new()
     }
@@ -68,7 +70,7 @@ impl TcVar for NoVars {}
 
 /// A [TypeChecker] instance in case no variables are required.
 pub type VarlessTypeChecker<V> = TypeChecker<V, NoVars>;
-impl<V: Variant> TypeChecker<V, NoVars> {
+impl<V: Type> TypeChecker<V, NoVars> {
     /// Instantiates a new, empty type checker that does not require variables.
     pub fn without_vars() -> VarlessTypeChecker<V> {
         TypeChecker::new()
@@ -76,13 +78,13 @@ impl<V: Variant> TypeChecker<V, NoVars> {
 }
 
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
-impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
+impl<V: Type, Var: TcVar> TypeChecker<V, Var> {
     /// Creates a new, empty type checker.  
     pub fn new() -> Self {
         Self::with_context(())
     }
 }
-impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
+impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
     /// Creates a new, empty type checker with the given context.  
     pub fn with_context(context: V::Context) -> Self {
         TypeChecker {
@@ -231,7 +233,7 @@ where
 
 /// Represents an error during the type check procedure.
 #[derive(Debug, Clone)]
-pub enum TcErr<V: ContextSensitiveVariant> {
+pub enum TcErr<V: ContextType> {
     /// Two keys were attempted to be equated and their underlying types turned out to be incompatible.
     /// Contains the two keys and the error that occurred when attempting to meet their [ContextSensitiveVariant] types.
     KeyEquation(TcKey, TcKey, V::Err),

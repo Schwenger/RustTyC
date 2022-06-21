@@ -98,10 +98,12 @@ mod keys;
 #[cfg(test)]
 mod tests;
 mod type_checker;
+mod type_table;
+mod children;
 pub mod types;
 
 pub use keys::TcKey;
 pub use type_checker::{TcErr, TcVar, TypeChecker, VarlessTypeChecker};
 pub use types::{
-    Arity, Constructable, ContextSensitiveVariant, Partial, Preliminary, PreliminaryTypeTable, TypeTable, Variant,
+    ContextType, Infered, Type,
 };
