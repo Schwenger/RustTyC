@@ -1,6 +1,6 @@
 use rusttyc::types::{ChildConstraint, ResolvedChildren};
 use rusttyc::{
-    types::Arity, Constructable, Infered, TcErr, TcKey, TcVar, TypeChecker, Type as TcVariant, VarlessTypeChecker,
+    types::Arity, Constructable, Infered, TcErr, Key, VarId, TypeChecker, Type as TcVariant, VarlessTypeChecker,
 };
 use std::cmp::max;
 use std::convert::TryInto;
@@ -27,7 +27,7 @@ struct Variable(usize);
 
 // ************ IMPLEMENTATION OF REQUIRED TRAITS ************ //
 
-impl TcVar for Variable {}
+impl VarId for Variable {}
 
 impl Type for Variant {
     type Err = String;
@@ -121,7 +121,7 @@ impl Constructable for Variant {
 /// It creates keys on the fly.  This is not possible for many kinds of type systems, in which case the functions
 /// requires a context with a mapping of e.g. Variable -> Key.  The context can be built during a first pass over the
 /// tree.
-fn tc_expr(tc: &mut VarlessTypeChecker<Variant>, expr: &Expression) -> Result<TcKey, TcErr<Variant>> {
+fn tc_expr(tc: &mut VarlessTypeChecker<Variant>, expr: &Expression) -> Result<Key, TcErr<Variant>> {
     use Expression::*;
     let key_result = tc.new_term_key(); // will be returned
     match expr {
@@ -145,7 +145,7 @@ fn tc_expr(tc: &mut VarlessTypeChecker<Variant>, expr: &Expression) -> Result<Tc
         PolyFn { name: _, param_constraints, args, returns } => {
             // Note: The following line cannot be replaced by `vec![param_constraints.len(); tc.new_key()]` as this
             // would copy the keys rather than creating new ones.
-            let params: Vec<(Option<Variant>, TcKey)> =
+            let params: Vec<(Option<Variant>, Key)> =
                 param_constraints.iter().map(|p| (*p, tc.new_term_key())).collect();
             for (arg_ty, arg_expr) in args {
                 let arg_key = tc_expr(tc, arg_expr)?;

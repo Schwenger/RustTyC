@@ -1,6 +1,6 @@
 use std::{iter::FromIterator, collections::HashMap, fmt::Debug};
 
-use crate::{ContextType, children::Children, TcKey};
+use crate::{ContextType, children::Children, Key};
 
 /// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].
 #[derive(Debug, Clone)]
@@ -78,6 +78,6 @@ pub trait Constructable: ContextType {
 
 
 /// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [ContextSensitiveVariant] does not implement [Constructable].
-pub type PreliminaryTypeTable<T> = HashMap<TcKey, Preliminary<T>>;
+pub type PreliminaryTypeTable<T> = HashMap<Key, Preliminary<T>>;
 /// A type table containing the constructed type of the inferred [ContextSensitiveVariant] for each [TcKey].  Requires [ContextSensitiveVariant] to implement [Constructable].
-pub type TypeTable<T> = HashMap<TcKey, <T as Constructable>::Type>;
+pub type TypeTable<T> = HashMap<Key, <T as Constructable>::Type>;

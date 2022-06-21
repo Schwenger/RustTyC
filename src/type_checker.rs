@@ -4,7 +4,7 @@ use crate::constraint_graph::ConstraintGraph;
 use crate::type_table::{TypeTable, Preliminary, PreliminaryTypeTable, Constructable};
 use crate::types::ContextType;
 use crate::{
-    keys::{Constraint, TcKey},
+    keys::{Constraint, Key},
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -13,7 +13,7 @@ use std::hash::Hash;
 /// Represents a re-usable variable in the type checking procedure.  
 ///
 /// [TcKey]s for variables will be managed by the [TypeChecker].
-pub trait TcVar: Debug + Eq + Hash + Clone {}
+pub trait VarId: Debug + Eq + Hash + Clone {}
 
 /// The [TypeChecker] is the main interaction point for the type checking procedure.
 ///
@@ -44,10 +44,10 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 /// # Example
 /// See [`crate documentation`](index.html).
 #[derive(Debug, Clone)]
-pub struct TypeChecker<V: ContextType, Var: TcVar> {
-    variables: HashMap<Var, TcKey>,
-    graph: ConstraintGraph<V>,
-    context: V::Context,
+pub struct TypeChecker<T: ContextType, Var: VarId> {
+    variables: HashMap<Var, Key>,
+    graph: ConstraintGraph<T>,
+    context: T::Context,
 
     /// Child id is the index of its name
     child_names: Vec<String>,
@@ -55,7 +55,7 @@ pub struct TypeChecker<V: ContextType, Var: TcVar> {
     child_ids: HashMap<String, usize>,
 }
 
-impl<V: Type, Var: TcVar> Default for TypeChecker<V, Var> {
+impl<T: Type, Var: VarId> Default for TypeChecker<T, Var> {
     fn default() -> Self {
         TypeChecker::new()
     }
@@ -66,27 +66,27 @@ impl<V: Type, Var: TcVar> Default for TypeChecker<V, Var> {
 pub struct NoVars {
     unit: (), // Prevents external creation.
 }
-impl TcVar for NoVars {}
+impl VarId for NoVars {}
 
 /// A [TypeChecker] instance in case no variables are required.
-pub type VarlessTypeChecker<V> = TypeChecker<V, NoVars>;
-impl<V: Type> TypeChecker<V, NoVars> {
+pub type VarlessTypeChecker<T> = TypeChecker<T, NoVars>;
+impl<T: Type> TypeChecker<T, NoVars> {
     /// Instantiates a new, empty type checker that does not require variables.
-    pub fn without_vars() -> VarlessTypeChecker<V> {
+    pub fn without_vars() -> VarlessTypeChecker<T> {
         TypeChecker::new()
     }
 }
 
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
-impl<V: Type, Var: TcVar> TypeChecker<V, Var> {
+impl<T: Type, Var: VarId> TypeChecker<T, Var> {
     /// Creates a new, empty type checker.  
     pub fn new() -> Self {
         Self::with_context(())
     }
 }
-impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
+impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     /// Creates a new, empty type checker with the given context.  
-    pub fn with_context(context: V::Context) -> Self {
+    pub fn with_context(context: T::Context) -> Self {
         TypeChecker {
             variables: HashMap::new(),
             graph: ConstraintGraph::new(),
@@ -105,13 +105,13 @@ impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
     }
 
     /// Generates a new key representing a term.  
-    pub fn new_term_key(&mut self) -> TcKey {
+    pub fn new_term_key(&mut self) -> Key {
         self.graph.create_vertex()
     }
 
     /// Manages keys for variables.  It checks if `var` already has an associated key.
     /// If so, it returns the key.  Otherwise, it generates a new one.
-    pub fn get_var_key(&mut self, var: &Var) -> TcKey {
+    pub fn get_var_key(&mut self, var: &Var) -> Key {
         // Avoid cloning `var` by forgoing the `entry` function if possible.
         if let Some(tck) = self.variables.get(var) {
             *tck
@@ -127,7 +127,7 @@ impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
     /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
-    pub fn get_indexed_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<V>> {
+    pub fn get_indexed_child_key(&mut self, parent: Key, nth: usize) -> Result<Key, TcErr<T>> {
         let TypeChecker { graph, variables: _, context, .. } = self;
         let key = graph.nth_child(parent, nth, context)?;
         // *self = TypeChecker { graph, variables, context };
@@ -139,7 +139,7 @@ impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
     /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `name` results in the same key.
-    pub fn get_named_child_key(&mut self, parent: TcKey, name: &str) -> Result<TcKey, TcErr<V>> {
+    pub fn get_named_child_key(&mut self, parent: Key, name: &str) -> Result<Key, TcErr<T>> {
         let TypeChecker { graph, variables: _, context, child_names: _, child_ids: _ } = self;
 
         let key = graph.named_child(parent, name, context)?;
@@ -149,7 +149,7 @@ impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
 
     /// Imposes a constraint on keys.  They can be obtained by using the associated functions of [TcKey].
     /// Returns a [TcErr] if the constraint immediately reveals a contradiction.
-    pub fn impose(&mut self, constr: Constraint<V>) -> Result<(), TcErr<V>> {
+    pub fn impose(&mut self, constr: Constraint<T>) -> Result<(), TcErr<T>> {
         match constr {
             Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
             Constraint::Equal(a, b) => {
@@ -166,27 +166,27 @@ impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
     }
 
     /// Lifts a collection of keys as indexed children into a certain recursive variant.
-    pub fn lift_into_indexed(&mut self, variant: V, mut sub_types: Vec<TcKey>) -> TcKey {
+    pub fn lift_into_indexed(&mut self, variant: T, mut sub_types: Vec<Key>) -> Key {
         self.lift_partially_indexed(variant, sub_types.drain(..).map(Some).collect())
     }
 
     /// Lifts a collection of keys as subset of indexed children into a certain recursive variant.
-    pub fn lift_partially_indexed(&mut self, variant: V, sub_types: Vec<Option<TcKey>>) -> TcKey {
+    pub fn lift_partially_indexed(&mut self, variant: T, sub_types: Vec<Option<Key>>) -> Key {
         self.graph.lift(variant, Children::Indexed(sub_types))
     }
 
     /// Lifts a collection of keys as named children into a certain recursive variant.
-    pub fn lift_into_named(&mut self, variant: V, mut sub_types: HashMap<String, TcKey>) -> TcKey {
+    pub fn lift_into_named(&mut self, variant: T, mut sub_types: HashMap<String, Key>) -> Key {
         self.lift_partially_named(variant, sub_types.drain().map(|(k, v)| (k, Some(v))).collect())
     }
 
     /// Lifts a collection of keys as subset of named children into a certain recursive variant.
-    pub fn lift_partially_named(&mut self, variant: V, mut sub_types: HashMap<String, Option<TcKey>>) -> TcKey {
+    pub fn lift_partially_named(&mut self, variant: T, mut sub_types: HashMap<String, Option<Key>>) -> Key {
         self.graph.lift(variant, Children::Named(sub_types.drain().map(|(k, v)| (self.child_ids[&k], v)).collect()))
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
-    pub fn all_keys(&self) -> impl Iterator<Item = TcKey> + '_ {
+    pub fn all_keys(&self) -> impl Iterator<Item = Key> + '_ {
         self.graph.all_keys()
     }
 
@@ -200,7 +200,7 @@ impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
     /// meet and equate calls.  Proceed with caution.
     pub fn update_context<F>(&mut self, update: F)
     where
-        F: FnOnce(&mut V::Context),
+        F: FnOnce(&mut T::Context),
     {
         update(&mut self.context);
     }
@@ -210,22 +210,22 @@ impl<V: ContextType, Var: TcVar> TypeChecker<V, Var> {
     /// It will attempt to resolve all constraints and return a type table mapping each registered key to its minimally constrained [Variant]s.
     /// For recursive types, the respective [Preliminary] provides access to [crate::TcKey]s refering to their children.
     /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
-    pub fn type_check_preliminary(self) -> Result<PreliminaryTypeTable<V>, TcErr<V>> {
+    pub fn type_check_preliminary(self) -> Result<PreliminaryTypeTable<T>, TcErr<T>> {
         let TypeChecker { graph, variables: _, context, .. } = self;
         graph.solve_preliminary(context)
     }
 }
 
-impl<V, Var: TcVar> TypeChecker<V, Var>
+impl<T, Var: VarId> TypeChecker<T, Var>
 where
-    V: Constructable,
+    T: Constructable,
 {
     /// Finalizes the type check procedure.
     /// Calling this function indicates that all relevant information was passed on to the type checker.
     /// It will attempt to resolve all constraints and return a type table mapping each registered key to its
     /// minimally constrained, constructed type, i.e. [Constructable::Type].  Refer to [TypeChecker::type_check_preliminary()] if [Variant] does not implement [Constructable].
     /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
-    pub fn type_check(self) -> Result<TypeTable<V>, TcErr<V>> {
+    pub fn type_check(self) -> Result<TypeTable<T>, TcErr<T>> {
         let TypeChecker { graph, variables: _, context, .. } = self;
         graph.solve(context)
     }
@@ -233,42 +233,42 @@ where
 
 /// Represents an error during the type check procedure.
 #[derive(Debug, Clone)]
-pub enum TcErr<V: ContextType> {
+pub enum TcErr<T: ContextType> {
     /// Two keys were attempted to be equated and their underlying types turned out to be incompatible.
     /// Contains the two keys and the error that occurred when attempting to meet their [ContextSensitiveVariant] types.
-    KeyEquation(TcKey, TcKey, V::Err),
+    KeyEquation(Key, Key, T::Err),
     /// An explicit type bound imposed on a key turned out to be incompatible with the type inferred based on
     /// remaining information on the key.  Contains the key and the error that occurred when meeting the explicit
     /// bound with the inferred type variant.
-    Bound(TcKey, Option<TcKey>, V::Err),
+    Bound(Key, Option<Key>, T::Err),
     /// This error occurs when a constraint accesses the `n`th child of a type and its variant turns out to only
     /// have `k < n` sub-types.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
-    ChildAccessOutOfBound(TcKey, V, usize),
+    ChildAccessOutOfBound(Key, T, usize),
     /// This error occurs when a constraint imposes the existing of children with the given names of a type and its variant turns out to
     /// not know these children.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the names of the children that
     /// do not exist for the variant.
-    FieldDoesNotExist(TcKey, V, HashSet<String>),
+    FieldDoesNotExist(Key, T, HashSet<String>),
     /// This error occurs when a child, accessed by a name, is not known to the type checker.
     /// Which names are known is defined by [TypeChecker::define_children_names].
     /// Contains the key on which the unknown child was expected and the name of the child.
-    UnknownField(TcKey, String),
+    UnknownField(Key, String),
     /// Attempted an named access to a child on a type that has indexed children.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the name of the child that
     /// was attempted to be accessed.
-    FieldAccessOnIndexedTyped(TcKey, V, HashSet<String>),
+    FieldAccessOnIndexedTyped(Key, T, HashSet<String>),
     /// Attempted an indexed access to a child on a type that has named children.
     /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
     /// was attempted to be accessed.
-    IndexedAccessOnNamedType(TcKey, V, usize),
+    IndexedAccessOnNamedType(Key, T, usize),
     /// This error occurs if the type checker inferred a specific arity but the variant reports a fixed arity that is lower than the inferred one.
     ArityMismatch {
         /// The key for which the mismatch was detected.
-        key: TcKey,
+        key: Key,
         /// The variant with fixed arity.
-        variant: V,
+        variant: T,
         /// The least required arity according to the type check procedure.
         inferred_arity: usize,
         /// The arity required according to the meet operation that created the variant.
@@ -277,9 +277,9 @@ pub enum TcErr<V: ContextType> {
     /// This error occurs if the type checker inferred a specific set of fields but the variant reports a fixed set of fields that is different than the inferred one.
     FieldMismatch {
         /// The key for which the mismatch was detected.
-        key: TcKey,
+        key: Key,
         /// The variant with fixed arity.
-        variant: V,
+        variant: T,
         /// The least required fields according to the type check procedure.
         inferred_fields: HashSet<String>,
         /// The fields required according to the meet operation that created the variant.
@@ -287,21 +287,21 @@ pub enum TcErr<V: ContextType> {
     },
     /// The access kind of the types children did not match during a meet.
     /// I.e. The type checker tried to meet a variant with named children with one with indexed children.
-    ChildKindMismatch(TcKey, V, TcKey, V),
+    ChildKindMismatch(Key, T, Key, T),
     /// An error reporting a failed type construction.  Contains the affected key, the preliminary result for which the construction failed, and the
     /// error reported by the construction.
-    Construction(TcKey, Preliminary<V>, V::Err),
+    Construction(Key, Preliminary<T>, T::Err),
     /// This error indicates that a variant requires indexed children, for one of which the construction failed.
     /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
     /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
     /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
     /// reported by the construction of the child.
-    IndexedChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
+    IndexedChildConstruction(Key, usize, Preliminary<T>, T::Err),
     /// This error indicates that a variant requires named children, for one of which the construction failed.
     /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
     /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
     /// The error contains the affected key, the name of the child, the preliminary result of which a child construction failed, and the error
-    NamedChildConstruction(TcKey, String, Preliminary<V>, V::Err),
+    NamedChildConstruction(Key, String, Preliminary<T>, T::Err),
     /// This error reports cyclic non-equality dependencies in the constraint graph.
     /// Example: Key 1 is more concrete than Key 2, which is more concrete than Key 3, which is more concrete than Key 1.
     CyclicGraph,

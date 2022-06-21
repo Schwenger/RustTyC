@@ -12,24 +12,24 @@ use std::hash::Hash;
 /// purpose.  They can then be passed to the [TypeChecker] via the [Typechecker::impose()] function.
 #[must_use = "the creation of a `TypeConstraint` has no effect, it should be passed to a `TypeChecker`"]
 #[derive(Debug, Clone)]
-pub enum Constraint<V: ContextType> {
+pub enum Constraint<T: ContextType> {
     /// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
     #[doc(hidden)]
-    Equal(TcKey, TcKey),
+    Equal(Key, Key),
 
     /// Connects two keys asymmetrically.  Refining `bound` refines `target` whereas refining `target` leaves `bound` unaffected.
     #[doc(hidden)]
     MoreConc {
         /// The more concrete key that is bound and thus affected by changes to `bound`.
         #[doc(hidden)]
-        target: TcKey,
+        target: Key,
         /// The less concrete key that constitutes a bound for `target`.
         #[doc(hidden)]
-        bound: TcKey,
+        bound: Key,
     },
     /// An asymmetric relation between a key and a type.  Note that the type cannot change over time.
     #[doc(hidden)]
-    MoreConcExplicit(TcKey, V),
+    MoreConcExplicit(Key, T),
 
     /// A conjunction of several constraints.
     #[doc(hidden)]
@@ -178,48 +178,48 @@ pub enum Constraint<V: ContextType> {
 /// # }
 /// ```
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TcKey {
+pub struct Key {
     pub(crate) ix: usize,
 }
 
-impl TcKey {
-    pub(crate) fn new(ix: usize) -> TcKey {
-        TcKey { ix }
+impl Key {
+    pub(crate) fn new(ix: usize) -> Key {
+        Key { ix }
     }
 }
 
-impl TcKey {
+impl Key {
     /// Connects two keys asymmetrically.  Refining `bound` refines `self` whereas refining `self` leaves `bound` unaffected.
-    pub fn concretizes<V: ContextType>(self, bound: Self) -> Constraint<V> {
+    pub fn concretizes<T: ContextType>(self, bound: Self) -> Constraint<T> {
         Constraint::MoreConc { target: self, bound }
     }
     /// Equates two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
-    pub fn equate_with<V: ContextType>(self, other: Self) -> Constraint<V> {
+    pub fn equate_with<T: ContextType>(self, other: Self) -> Constraint<T> {
         assert_ne!(self, other, "Cannot equate equal keys.");
         Constraint::Equal(self, other)
     }
     /// Declares that `self` is at least as concrete as `bound`.
-    pub fn concretizes_explicit<V: ContextType>(self, bound: V) -> Constraint<V> {
+    pub fn concretizes_explicit<T: ContextType>(self, bound: T) -> Constraint<T> {
         Constraint::MoreConcExplicit(self, bound)
     }
     /// Declares that `self` is the meet of `left` and `right`.  
     /// This binds `self` to both `left` and `right` asymmetrically.
-    pub fn is_meet_of<V: ContextType>(self, left: Self, right: Self) -> Constraint<V> {
+    pub fn is_meet_of<T: ContextType>(self, left: Self, right: Self) -> Constraint<T> {
         self.is_meet_of_all(&[left, right])
     }
     /// Declares that `self` is the meet of all elements contained in `elems`.  
     /// This binds `self` to all of these keys asymmetrically.
-    pub fn is_meet_of_all<V: ContextType>(self, elems: &[Self]) -> Constraint<V> {
+    pub fn is_meet_of_all<T: ContextType>(self, elems: &[Self]) -> Constraint<T> {
         Constraint::Conjunction(elems.iter().map(|e| self.concretizes(*e)).collect())
     }
     /// Declares that `self` is the symmetric meet of `left` and `right`.  
     /// This binds `self` to both `left` and `right` symmetrically.
-    pub fn is_sym_meet_of<V: ContextType>(self, left: Self, right: Self) -> Constraint<V> {
+    pub fn is_sym_meet_of<T: ContextType>(self, left: Self, right: Self) -> Constraint<T> {
         self.is_sym_meet_of_all(&[left, right])
     }
     /// Declares that `self` is the symmetric meet of all elements contained in `elems`.  
     /// This binds `self` to all of these keys symmetrically.
-    pub fn is_sym_meet_of_all<V: ContextType>(self, elems: &[Self]) -> Constraint<V> {
+    pub fn is_sym_meet_of_all<T: ContextType>(self, elems: &[Self]) -> Constraint<T> {
         Constraint::Conjunction(elems.iter().map(|e| self.equate_with(*e)).collect())
     }
 }

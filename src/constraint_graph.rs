@@ -2,7 +2,7 @@ use crate::children::{Children, ChildConstraint};
 use crate::type_table::{TypeTable, PreliminaryTypeTable, Constructable, ResolvedChildren};
 use crate::{
     types::{ContextType, Infered},
-    TcErr, TcKey,
+    TcErr, Key,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -11,8 +11,8 @@ mod type_info;
 use type_info::TypeInfo;
 
 
-type EquateObligation = Vec<(TcKey, TcKey)>;
-type OptEquateObligation = Vec<Option<(TcKey, TcKey)>>;
+type EquateObligation = Vec<(Key, Key)>;
+type OptEquateObligation = Vec<Option<(Key, Key)>>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ConstraintGraph<T: ContextType> {
@@ -27,13 +27,13 @@ pub(crate) struct ConstraintGraph<T: ContextType> {
 #[derive(Debug, Clone)]
 pub(crate) enum Vertex<T: ContextType> {
     /// Represents a former vertex that was unified with another one and not chosen to be the representative.
-    Fwd { this: TcKey, repr: TcKey },
+    Fwd { this: Key, repr: Key },
     /// Represents a full vertex.
     Repr(FullVertex<T>),
 }
 
 impl<T: ContextType> Vertex<T> {
-    fn this(&self) -> TcKey {
+    fn this(&self) -> Key {
         match self {
             Vertex::Fwd { this, .. } => *this,
             Vertex::Repr(fv) => fv.this,
@@ -61,21 +61,21 @@ impl<T: ContextType> Vertex<T> {
     }
 
     /// Returns the reference of the vertex representing this one.  Returns None if this vertex represents itself.
-    fn get_repr_nontrans(&self) -> Option<TcKey> {
+    fn get_repr_nontrans(&self) -> Option<Key> {
         match self {
             Vertex::Fwd { repr, .. } => Some(*repr),
             Vertex::Repr(_) => None,
         }
     }
     /// Creates a full vertex without information regarding its children.
-    fn new_niladic(this: TcKey) -> Vertex<T> {
+    fn new_niladic(this: Key) -> Vertex<T> {
         Vertex::Repr(FullVertex { this, ty: TypeInfo::top() })
     }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct FullVertex<T: ContextType> {
-    this: TcKey,
+    this: Key,
     ty: TypeInfo<T>,
 }
 
@@ -93,17 +93,17 @@ impl<T: ContextType> ConstraintGraph<T> {
     }
 
     /// Create an iterator over all keys currently registered in the graph.
-    pub(crate) fn all_keys(&self) -> impl Iterator<Item = TcKey> + '_ {
+    pub(crate) fn all_keys(&self) -> impl Iterator<Item = Key> + '_ {
         self.vertices.iter().map(|v| v.this())
     }
 
     /// Creates and registers a new vertex.
-    pub(crate) fn create_vertex(&mut self) -> TcKey {
+    pub(crate) fn create_vertex(&mut self) -> Key {
         self.new_vertex().this()
     }
 
     fn new_vertex(&mut self) -> &mut Vertex<T> {
-        let key = TcKey::new(self.vertices.len());
+        let key = Key::new(self.vertices.len());
         let v = Vertex::new_niladic(key);
         self.vertices.push(v);
         self.vertices.last_mut().unwrap() // we just pushed it onto the vec.
@@ -113,7 +113,7 @@ impl<T: ContextType> ConstraintGraph<T> {
     /// the key is returned without calling the `keygen` function.  Otherwise, `keygen` generates a new key which will be added to the graph regularly,
     /// associated with the child, and returned.
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
-    pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize, context: &T::Context) -> Result<TcKey, TcErr<T>> {
+    pub(crate) fn nth_child(&mut self, parent: Key, n: usize, context: &T::Context) -> Result<Key, TcErr<T>> {
         let parent_v = Self::repr_mut(&mut self.vertices, parent);
         parent_v.ty.apply_child_constraint_checked(
             parent,
@@ -135,7 +135,7 @@ impl<T: ContextType> ConstraintGraph<T> {
     /// the key is returned without calling the `keygen` function.  Otherwise, `keygen` generates a new key which will be added to the graph regularly,
     /// associated with the child, and returned.
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
-    pub(crate) fn named_child(&mut self, parent: TcKey, name: &str, context: &T::Context) -> Result<TcKey, TcErr<T>> {
+    pub(crate) fn named_child(&mut self, parent: Key, name: &str, context: &T::Context) -> Result<Key, TcErr<T>> {
         let ConstraintGraph { vertices, child_ids, child_names } = self;
         let parent_v = Self::repr_mut(vertices, parent);
 
@@ -158,13 +158,13 @@ impl<T: ContextType> ConstraintGraph<T> {
     }
 
     /// Declares an asymmetric relation between two keys.
-    pub(crate) fn add_upper_bound(&mut self, target: TcKey, bound: TcKey) {
+    pub(crate) fn add_upper_bound(&mut self, target: Key, bound: Key) {
         let bound = self.repr(bound).this;
         Self::repr_mut(&mut self.vertices, target).ty.add_upper_bound(bound)
     }
 
     /// Declares a symmetric relation between two keys.
-    pub(crate) fn equate(&mut self, left: TcKey, right: TcKey, context: &T::Context) -> Result<(), TcErr<T>> {
+    pub(crate) fn equate(&mut self, left: Key, right: Key, context: &T::Context) -> Result<(), TcErr<T>> {
         let left = self.repr(left).this;
         let right = self.repr(right).this;
         let (rep, sub) = if left < right { (left, right) } else { (right, left) };
@@ -172,14 +172,14 @@ impl<T: ContextType> ConstraintGraph<T> {
     }
 
     /// Imposes an explicit bound on a key.  An Err return indicates a contradiction, an Ok does not indicate the absence of a contradiction.
-    pub(crate) fn explicit_bound(&mut self, target: TcKey, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
+    pub(crate) fn explicit_bound(&mut self, target: Key, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
         self.add_explicit_bound(target, bound, context).map(|_| ())
     }
 
     // INTERNAL HELPER FUNCTIONS
 
     /// Transforms `sub` into a forward to `repr`.
-    fn establish_fwd(&mut self, sub: TcKey, repr: TcKey, context: &T::Context) -> Result<(), TcErr<T>> {
+    fn establish_fwd(&mut self, sub: Key, repr: Key, context: &T::Context) -> Result<(), TcErr<T>> {
         if sub == repr {
             // sub and repr are already in the same eq class since we started
             // out with the identity relation;  nothing to do.
@@ -202,14 +202,14 @@ impl<T: ContextType> ConstraintGraph<T> {
         Ok(())
     }
 
-    pub(crate) fn lift(&mut self, variant: T, children: Children) -> TcKey {
+    pub(crate) fn lift(&mut self, variant: T, children: Children) -> Key {
         let v = self.new_vertex().mut_full();
         v.ty.variant = variant;
         v.ty.children = children;
         v.this
     }
 
-    fn add_explicit_bound(&mut self, target: TcKey, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
+    fn add_explicit_bound(&mut self, target: Key, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
         let target_v = Self::repr_mut(&mut self.vertices, target);
         let lhs = target_v.ty.to_infered();
         let rhs_arity = bound.arity(context);
@@ -220,15 +220,15 @@ impl<T: ContextType> ConstraintGraph<T> {
 
     // ACCESS LOGIC
 
-    fn vertex(vertices: &[Vertex<T>], key: TcKey) -> &Vertex<T> {
+    fn vertex(vertices: &[Vertex<T>], key: Key) -> &Vertex<T> {
         &vertices[key.ix]
     }
 
-    fn vertex_mut(vertices: &mut Vec<Vertex<T>>, key: TcKey) -> &mut Vertex<T> {
+    fn vertex_mut(vertices: &mut Vec<Vertex<T>>, key: Key) -> &mut Vertex<T> {
         &mut vertices[key.ix]
     }
 
-    fn repr_mut(vertices: &mut Vec<Vertex<T>>, v: TcKey) -> &mut FullVertex<T> {
+    fn repr_mut(vertices: &mut Vec<Vertex<T>>, v: Key) -> &mut FullVertex<T> {
         match Self::vertex(vertices, v).get_repr_nontrans() {
             Some(next) => Self::repr_mut(vertices, next),
             None => Self::vertex_mut(vertices, v).mut_full(),
@@ -243,7 +243,7 @@ impl<T: ContextType> ConstraintGraph<T> {
         })
     }
 
-    fn repr(&self, v: TcKey) -> &FullVertex<T> {
+    fn repr(&self, v: Key) -> &FullVertex<T> {
         match &Self::vertex(&self.vertices, v) {
             Vertex::Repr(fv) => fv,
             Vertex::Fwd { repr, .. } => self.repr(*repr),
@@ -281,7 +281,7 @@ impl<T: ContextType> ConstraintGraph<T> {
         self.vertices
             .iter()
             .map(|v| v.this())
-            .collect::<Vec<TcKey>>()
+            .collect::<Vec<Key>>()
             .into_iter()
             .map(|key| (key, self.repr(key).ty.to_preliminary()))
             .collect()
@@ -292,7 +292,7 @@ impl<T: ContextType> ConstraintGraph<T> {
         self.vertices
             .iter()
             .map(Vertex::this)
-            .collect::<Vec<TcKey>>()
+            .collect::<Vec<Key>>()
             .into_iter()
             .map(|key| {
                 let vertex = self.repr(key);
@@ -324,7 +324,7 @@ impl<T: ContextType> ConstraintGraph<T> {
         self.vertices.iter().any(|v| self.is_in_loop(v, vec![]))
     }
 
-    fn is_in_loop(&self, vertex: &Vertex<T>, mut history: Vec<TcKey>) -> bool {
+    fn is_in_loop(&self, vertex: &Vertex<T>, mut history: Vec<Key>) -> bool {
         match *vertex {
             Vertex::Fwd { this, repr } => {
                 if history.contains(&this) {
@@ -339,25 +339,25 @@ impl<T: ContextType> ConstraintGraph<T> {
     }
 }
 
-impl<V> ConstraintGraph<V>
+impl<T> ConstraintGraph<T>
 where
-    V: Constructable,
+    T: Constructable,
 {
-    pub(crate) fn solve(mut self, context: V::Context) -> Result<TypeTable<V>, TcErr<V>> {
+    pub(crate) fn solve(mut self, context: T::Context) -> Result<TypeTable<T>, TcErr<T>> {
         self.solve_constraints(context)?;
         self.construct_types()
     }
 
-    fn construct_types(self) -> Result<TypeTable<V>, TcErr<V>> {
-        let mut resolved: HashMap<TcKey, V::Type> = HashMap::new();
-        let mut open: Vec<&FullVertex<V>> = self.reprs().collect();
+    fn construct_types(self) -> Result<TypeTable<T>, TcErr<T>> {
+        let mut resolved: HashMap<Key, T::Type> = HashMap::new();
+        let mut open: Vec<&FullVertex<T>> = self.reprs().collect();
         loop {
             let mut still_open = Vec::with_capacity(open.len());
             // println!("Resolved: {:?}", resolved);
             // println!("Open: {:?}", open.iter().map(|d| d.this).collect::<Vec<TcKey>>());
             let num_open = open.len();
             for v in open {
-                let children: Result<Option<ResolvedChildren<V::Type>>, TcErr<V>> = match &v.ty.children {
+                let children: Result<Option<ResolvedChildren<T::Type>>, TcErr<T>> = match &v.ty.children {
                     Children::Unknown => Ok(Some(ResolvedChildren::None)),
                     Children::None => Ok(Some(ResolvedChildren::None)),
                     Children::Indexed(children) => children
@@ -367,7 +367,7 @@ where
                             if let Some(key) = c {
                                 Ok(resolved.get(&self.repr(*key).this).cloned())
                             } else {
-                                V::construct(&V::top(), ResolvedChildren::None)
+                                T::construct(&T::top(), ResolvedChildren::None)
                                     .map(Some)
                                     .map_err(|e| TcErr::IndexedChildConstruction(v.this, ix, v.ty.to_preliminary(), e))
                             }
@@ -382,7 +382,7 @@ where
                                     .cloned()
                                     .map(|t| (self.child_names[*name].clone(), t)))
                             } else {
-                                V::construct(&V::top(), ResolvedChildren::None)
+                                T::construct(&T::top(), ResolvedChildren::None)
                                     .map(|t| Some((self.child_names[*name].clone(), t)))
                                     .map_err(|e| {
                                         TcErr::NamedChildConstruction(

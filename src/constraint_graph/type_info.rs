@@ -1,36 +1,36 @@
 use std::{collections::{HashSet, HashMap}, iter::FromIterator};
 
-use crate::{ContextType, children::{Children, ChildConstraint, Arity}, TcKey, TcErr, constraint_graph::{OptEquateObligation, EquateObligation}, Infered, type_table::Preliminary};
+use crate::{ContextType, children::{Children, ChildConstraint, Arity}, Key, TcErr, constraint_graph::{OptEquateObligation, EquateObligation}, Infered, type_table::Preliminary};
 
 use super::ConstraintGraph;
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TypeInfo<V: ContextType> {
-    pub(crate) variant: V,
+pub(crate) struct TypeInfo<T: ContextType> {
+    pub(crate) variant: T,
     pub(crate) children: Children,
-    pub(crate) upper_bounds: HashSet<TcKey>,
+    pub(crate) upper_bounds: HashSet<Key>,
 }
 
-impl<V: ContextType> TypeInfo<V> {
+impl<T: ContextType> TypeInfo<T> {
     pub(crate) fn top() -> Self {
-        TypeInfo { variant: V::top(), children: Children::Unknown, upper_bounds: HashSet::new() }
+        TypeInfo { variant: T::top(), children: Children::Unknown, upper_bounds: HashSet::new() }
     }
 
-    pub(crate) fn equal(this: &Self, that: &Self, ctx: &V::Context) -> bool {
-        V::equal(&this.variant, &that.variant, ctx)
+    pub(crate) fn equal(this: &Self, that: &Self, ctx: &T::Context) -> bool {
+        T::equal(&this.variant, &that.variant, ctx)
             && this.children == that.children
             && this.upper_bounds == that.upper_bounds
     }
 
     pub(crate) fn apply_child_constraint_checked(
         &mut self,
-        this: TcKey,
+        this: Key,
         constraint: ChildConstraint,
-        ctx: &V::Context,
+        ctx: &T::Context,
         child_ids: &HashMap<String, usize>,
         child_names: &[String],
-    ) -> Result<(), TcErr<V>> {
+    ) -> Result<(), TcErr<T>> {
         match (&self.variant.arity(ctx).substitute(child_ids), constraint) {
             (Arity::None, ChildConstraint::Indexed(new_arity)) => {
                 return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity))
@@ -56,12 +56,12 @@ impl<V: ContextType> TypeInfo<V> {
             }
             (Arity::FixedIndexed(given_arity), ChildConstraint::Indexed(_)) => match &mut self.children {
                 Children::Unknown => self.children = Children::Indexed(vec![None; *given_arity]),
-                Children::Indexed(children) => ConstraintGraph::<V>::fill_with(children, None, *given_arity),
+                Children::Indexed(children) => ConstraintGraph::<T>::fill_with(children, None, *given_arity),
                 Children::Named(_) | Children::None => unreachable!("Mismatch between arity type and children"),
             },
             (Arity::Variable, ChildConstraint::Indexed(new_arity)) => match &mut self.children {
                 Children::Unknown => self.children = Children::Indexed(vec![None; new_arity]),
-                Children::Indexed(children) => ConstraintGraph::<V>::fill_with(children, None, new_arity),
+                Children::Indexed(children) => ConstraintGraph::<T>::fill_with(children, None, new_arity),
                 Children::Named(_) => {
                     return Err(TcErr::IndexedAccessOnNamedType(this, self.variant.clone(), new_arity));
                 }
@@ -127,7 +127,7 @@ impl<V: ContextType> TypeInfo<V> {
         match constraint {
             ChildConstraint::Indexed(idx) => match &mut self.children {
                 Children::Unknown => self.children = Children::Indexed(vec![None; idx]),
-                Children::Indexed(children) => ConstraintGraph::<V>::fill_with(children, None, idx),
+                Children::Indexed(children) => ConstraintGraph::<T>::fill_with(children, None, idx),
                 Children::Named(_) | Children::None => unreachable!("Mismatch between arity type and children"),
             },
             ChildConstraint::Named(target) => match &mut self.children {
@@ -145,43 +145,43 @@ impl<V: ContextType> TypeInfo<V> {
         }
     }
 
-    pub(crate) fn child_indexed(&self, idx: usize) -> Option<TcKey> {
+    pub(crate) fn child_indexed(&self, idx: usize) -> Option<Key> {
         debug_assert!(self.children.is_indexed());
         debug_assert!(self.children.len().unwrap_or(0) > idx);
         self.children.indexed().unwrap()[idx]
     }
 
-    pub(crate) fn child_named(&self, id: usize) -> Option<TcKey> {
+    pub(crate) fn child_named(&self, id: usize) -> Option<Key> {
         debug_assert!(self.children.is_named());
         debug_assert!(self.children.named().unwrap().contains_key(&id));
         self.children.named().unwrap()[&id]
     }
 
-    pub(crate) fn set_child_indexed(&mut self, n: usize, child: TcKey) {
+    pub(crate) fn set_child_indexed(&mut self, n: usize, child: Key) {
         debug_assert!(self.children.is_indexed());
         debug_assert!(self.children.len().unwrap_or(0) > n);
         self.children.indexed_mut().unwrap()[n] = Some(child);
     }
 
-    pub(crate) fn set_child_named(&mut self, id: usize, child: TcKey) {
+    pub(crate) fn set_child_named(&mut self, id: usize, child: Key) {
         debug_assert!(self.children.is_named());
         debug_assert!(self.children.named().unwrap().contains_key(&id));
         let _ = self.children.named_mut().unwrap().insert(id, Some(child));
     }
 
-    pub(crate) fn add_upper_bound(&mut self, bound: TcKey) {
+    pub(crate) fn add_upper_bound(&mut self, bound: Key) {
         let _ = self.upper_bounds.insert(bound);
     }
 
     pub(crate) fn meet(
         &mut self,
-        this: TcKey,
-        target_key: TcKey,
+        this: Key,
+        target_key: Key,
         rhs: &Self,
-        ctx: &V::Context,
+        ctx: &T::Context,
         child_ids: &HashMap<String, usize>,
         child_names: &[String],
-    ) -> Result<EquateObligation, TcErr<V>> {
+    ) -> Result<EquateObligation, TcErr<T>> {
         // TODO: Extremely inefficient; improve.
         let lhs = self;
         let mut is_indexed = true;
@@ -274,7 +274,7 @@ impl<V: ContextType> TypeInfo<V> {
             (vec![], Children::None)
         } else if is_indexed {
             // Make child arrays same length.
-            ConstraintGraph::<V>::fill_with(
+            ConstraintGraph::<T>::fill_with(
                 lhs.children.indexed_mut().expect("children to be indexed"),
                 None,
                 rhs.children.len().unwrap_or(0),
@@ -320,18 +320,18 @@ impl<V: ContextType> TypeInfo<V> {
         Ok(equates)
     }
 
-    pub(crate) fn to_infered(&self) -> Infered<V> {
+    pub(crate) fn to_infered(&self) -> Infered<T> {
         Infered { variant: self.variant.clone(), children: self.children.to_constraint() }
     }
 
     pub(crate) fn with_infered(
         &mut self,
-        this: TcKey,
-        p: Infered<V>,
-        ctx: &V::Context,
+        this: Key,
+        p: Infered<T>,
+        ctx: &T::Context,
         child_ids: &HashMap<String, usize>,
         child_names: &[String],
-    ) -> Result<(), TcErr<V>> {
+    ) -> Result<(), TcErr<T>> {
         let Infered { variant, children: constraint } = p;
         match variant.arity(ctx).substitute(child_ids) {
             Arity::Variable => {
@@ -412,7 +412,7 @@ impl<V: ContextType> TypeInfo<V> {
         }
     }
 
-    pub(crate) fn to_preliminary(&self) -> Preliminary<V> {
+    pub(crate) fn to_preliminary(&self) -> Preliminary<T> {
         Preliminary { ty: self.variant.clone(), children: self.children.clone() }
     }
 }

@@ -102,8 +102,8 @@ mod type_table;
 mod children;
 pub mod types;
 
-pub use keys::TcKey;
-pub use type_checker::{TcErr, TcVar, TypeChecker, VarlessTypeChecker};
+pub use keys::Key;
+pub use type_checker::{TcErr, VarId, TypeChecker, VarlessTypeChecker};
 pub use types::{
     ContextType, Infered, Type,
 };

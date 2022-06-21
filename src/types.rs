@@ -105,17 +105,17 @@ pub trait Type: Sized + Clone + Debug + Eq {
     fn arity(&self) -> Arity<String>;
 }
 
-impl<V: Type> ContextType for V {
-    type Err = V::Err;
+impl<T: Type> ContextType for T {
+    type Err = T::Err;
 
     type Context = ();
 
     fn top() -> Self {
-        V::top()
+        T::top()
     }
 
     fn meet(lhs: Infered<Self>, rhs: Infered<Self>, _ctx: &Self::Context) -> Result<Infered<Self>, Self::Err> {
-        V::meet(lhs, rhs)
+        T::meet(lhs, rhs)
     }
 
     fn arity(&self, _ctx: &Self::Context) -> Arity<String> {
@@ -134,9 +134,9 @@ impl<V: Type> ContextType for V {
 /// The `children` represent the current knowledge of the type checker about the children of the type.
 /// See [ChildConstraint] for further information.
 #[derive(Debug, Clone)]
-pub struct Infered<V: Sized> {
+pub struct Infered<T: Sized> {
     /// The variant represented by this `Partial`.
-    pub variant: V,
+    pub variant: T,
     /// The least requirement for children.
     pub children: ChildConstraint,
 }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use crate::TcKey;
+use crate::Key;
 
 /// Represents the current children of a type.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -12,9 +12,9 @@ pub enum Children {
     /// The type doesn't have any children.
     None,
     /// The type has indexed children represented by the collection within.
-    Indexed(Vec<Option<TcKey>>),
+    Indexed(Vec<Option<Key>>),
     /// The type has named children represented by the collection within.
-    Named(HashMap<usize, Option<TcKey>>),
+    Named(HashMap<usize, Option<Key>>),
 }
 
 impl Children {
@@ -35,14 +35,14 @@ impl Children {
         matches!(self, Children::Named(_))
     }
 
-    pub(crate) fn indexed(&self) -> Option<&Vec<Option<TcKey>>> {
+    pub(crate) fn indexed(&self) -> Option<&Vec<Option<Key>>> {
         match self {
             Children::Indexed(res) => Some(res),
             Children::Unknown | Children::Named(_) | Children::None => None,
         }
     }
 
-    pub(crate) fn indexed_mut(&mut self) -> Option<&mut Vec<Option<TcKey>>> {
+    pub(crate) fn indexed_mut(&mut self) -> Option<&mut Vec<Option<Key>>> {
         match self {
             Children::Indexed(res) => Some(res),
             Children::Unknown => {
@@ -53,14 +53,14 @@ impl Children {
         }
     }
 
-    pub(crate) fn named(&self) -> Option<&HashMap<usize, Option<TcKey>>> {
+    pub(crate) fn named(&self) -> Option<&HashMap<usize, Option<Key>>> {
         match self {
             Children::Named(res) => Some(res),
             Children::Unknown | Children::Indexed(_) | Children::None => None,
         }
     }
 
-    pub(crate) fn named_mut(&mut self) -> Option<&mut HashMap<usize, Option<TcKey>>> {
+    pub(crate) fn named_mut(&mut self) -> Option<&mut HashMap<usize, Option<Key>>> {
         match self {
             Children::Named(res) => Some(res),
             Children::Unknown => {
