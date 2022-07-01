@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{ContextType, children::{Children, Arity, ChildAccessor, ChildAccessErr, ReqsMerge, Equates}, Key, TcErr, type_table::Preliminary};
+use crate::{ContextType, children::{Children, ChildAccessor, ChildAccessErr, ReqsMerge, Equates}, Key, TcErr, type_table::Preliminary};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,39 +35,8 @@ impl<T: ContextType> TypeInfo<T> {
             .map_err(|err| Self::transform_err(this, &self.ty, err))
     }
 
-    pub(crate) fn set_child_indexed(&mut self, this: Key, idx: usize, child_key: Key) -> Result<ReqsMerge, TcErr<T>> {
-        self.add_child(this, &ChildAccessor::Index(idx), child_key)
-    }
-
-    pub(crate) fn set_child_named(&mut self, this: Key, field: String, child_key: Key) -> Result<ReqsMerge, TcErr<T>> {
-        self.add_child(this, &ChildAccessor::Field(field), child_key)
-    }
-
     pub(crate) fn add_upper_bound(&mut self, bound: Key) {
         let _ = self.upper_bounds.insert(bound);
-    }
-
-    fn meet_arity(left: Arity, left_key: Key, right: Arity, right_key: Key) -> Result<Arity, TcErr<T>> {
-        use Arity::*;
-        match (&left, &right) {
-            (Variable, other) 
-            | (other, Variable) => Ok(other.clone()),
-            (None, None) => Ok(None),
-            (None, _) 
-            | (_, None) 
-            | (Fields(_), Indices { .. }) 
-            | (Indices { .. }, Fields(_)) 
-                => Err(TcErr::ArityMismatch { 
-                    key1: left_key, 
-                    arity1: left, 
-                    key2: right_key, 
-                    arity2: right 
-                }),
-            (Fields(left), Fields(right)) 
-                => Ok(Fields(left.union(&right).cloned().collect())),
-            (Indices { greatest: left }, Indices { greatest: right }) 
-                => Ok(Indices { greatest: usize::max(*left, *right) }),
-        }
     }
 
     fn combine_children(&self, this: Key, left: &Children, right: &Children) -> Result<(Children, Equates), TcErr<T>> {

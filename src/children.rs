@@ -84,10 +84,6 @@ impl Children {
         return Err(ChildAccessErr{ children: self.clone(), accessor: child.clone() });
     }
 
-    pub(crate) fn valid_child_access(&self, child: &ChildAccessor) -> Result<(), ChildAccessErr> {
-        self._valid_child_access(child).map(|_| ())
-    }
-
     pub(crate) fn add_potential_child(&mut self, child: &ChildAccessor, child_key: Option<Key>) -> Result<ReqsMerge, ChildAccessErr> {
         let inner = self._valid_child_access_mut(child)?;
         let res = match inner.get(&child).cloned().flatten() {
