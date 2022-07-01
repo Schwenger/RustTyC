@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
-use crate::{ContextType, children::{Children, ChildAccessor, ChildAccessErr, ReqsMerge, Equates}, Key, TcErr, type_table::Preliminary};
-
+use crate::{
+    children::{ChildAccessErr, ChildAccessor, Children, Equates, ReqsMerge},
+    type_table::Preliminary,
+    ContextType, Key, TcErr,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypeInfo<T: ContextType> {
@@ -16,9 +19,7 @@ impl<T: ContextType> TypeInfo<T> {
     }
 
     pub(crate) fn equal(this: &Self, that: &Self, ctx: &T::Context) -> bool {
-        T::equal(&this.ty, &that.ty, ctx)
-            && this.children == that.children
-            && this.upper_bounds == that.upper_bounds
+        T::equal(&this.ty, &that.ty, ctx) && this.children == that.children && this.upper_bounds == that.upper_bounds
     }
 
     pub(crate) fn transform_err(key: Key, ty: &T, err: ChildAccessErr) -> TcErr<T> {
@@ -26,13 +27,16 @@ impl<T: ContextType> TypeInfo<T> {
     }
 
     pub(crate) fn child(&self, this: Key, child: &ChildAccessor) -> Result<Option<Key>, TcErr<T>> {
-        self.children.child(child)
-            .map_err(|err| Self::transform_err(this, &self.ty, err))
+        self.children.child(child).map_err(|err| Self::transform_err(this, &self.ty, err))
     }
 
-    pub(crate) fn add_child(&mut self, this: Key, child: &ChildAccessor, child_key: Key) -> Result<ReqsMerge, TcErr<T>> {
-        self.children.add_child(child, child_key)
-            .map_err(|err| Self::transform_err(this, &self.ty, err))
+    pub(crate) fn add_child(
+        &mut self,
+        this: Key,
+        child: &ChildAccessor,
+        child_key: Key,
+    ) -> Result<ReqsMerge, TcErr<T>> {
+        self.children.add_child(child, child_key).map_err(|err| Self::transform_err(this, &self.ty, err))
     }
 
     pub(crate) fn add_upper_bound(&mut self, bound: Key) {
@@ -42,11 +46,10 @@ impl<T: ContextType> TypeInfo<T> {
     fn combine_children(&self, this: Key, left: &Children, right: &Children) -> Result<(Children, Equates), TcErr<T>> {
         let mut new_children = Children::empty();
 
-        let all_children = left.to_vec().into_iter()
-            .chain(right.to_vec().into_iter());
-        let required_equates = all_children.map(|(access, child_key)| {
-                new_children.add_potential_child(access, *child_key)
-                .map(|merge| merge.zip(*child_key))
+        let all_children = left.to_vec().into_iter().chain(right.to_vec().into_iter());
+        let required_equates = all_children
+            .map(|(access, child_key)| {
+                new_children.add_potential_child(access, *child_key).map(|merge| merge.zip(*child_key))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| Self::transform_err(this, &self.ty, err))?
@@ -56,15 +59,9 @@ impl<T: ContextType> TypeInfo<T> {
         Ok((new_children, required_equates))
     }
 
-    pub(crate) fn meet(
-        &mut self,
-        this: Key,
-        that: Key,
-        rhs: &Self,
-        ctx: &T::Context,
-    ) -> Result<Equates, TcErr<T>> {
+    pub(crate) fn meet(&mut self, this: Key, that: Key, rhs: &Self, ctx: &T::Context) -> Result<Equates, TcErr<T>> {
         let lhs = self;
-        
+
         let (new_children, mut required_equates) = lhs.combine_children(this, &lhs.children, &rhs.children)?;
 
         #[cfg(Debug)]
@@ -74,17 +71,16 @@ impl<T: ContextType> TypeInfo<T> {
             assert!(debug_children.is_ok() && debug_children.unwrap() == new_children);
         }
 
-        let new_ty =
-            ContextType::meet(lhs.ty.clone(), rhs.ty.clone(), ctx).map_err(|e| 
-                TcErr::IncompatibleTypes {
-                    key1: this,
-                    ty1: lhs.ty.clone(),
-                    key2: that,
-                    ty2: rhs.ty.clone(),
-                    err: e,
-                })?;
-        
-        let (new_children, mut additional_equates) = lhs.combine_children(this, &new_children, &new_ty.arity(ctx).into())?;
+        let new_ty = ContextType::meet(lhs.ty.clone(), rhs.ty.clone(), ctx).map_err(|e| TcErr::IncompatibleTypes {
+            key1: this,
+            ty1: lhs.ty.clone(),
+            key2: that,
+            ty2: rhs.ty.clone(),
+            err: e,
+        })?;
+
+        let (new_children, mut additional_equates) =
+            lhs.combine_children(this, &new_children, &new_ty.arity(ctx).into())?;
         required_equates.append(&mut additional_equates);
 
         let new_upper_bounds = lhs.upper_bounds.union(&rhs.upper_bounds).cloned().collect();
@@ -93,23 +89,19 @@ impl<T: ContextType> TypeInfo<T> {
         Ok(required_equates)
     }
 
-    fn commit_update(&mut self, new_ty: T, new_children: Children, new_upper_bounds: HashSet<Key>){
+    fn commit_update(&mut self, new_ty: T, new_children: Children, new_upper_bounds: HashSet<Key>) {
         self.ty = new_ty;
         self.children = new_children;
         self.upper_bounds = new_upper_bounds;
     }
 
-    pub(crate) fn with_bound(
-        &mut self,
-        this: Key,
-        bound: T,
-        ctx: &T::Context,
-    ) -> Result<(), TcErr<T>> {
-
-        let new_ty =
-            T::meet(self.ty.clone(), bound.clone(), ctx).map_err(|err| 
-                TcErr::IncompatibleBound { key: this, ty: self.ty.clone(), bound, err }
-            )?;
+    pub(crate) fn with_bound(&mut self, this: Key, bound: T, ctx: &T::Context) -> Result<(), TcErr<T>> {
+        let new_ty = T::meet(self.ty.clone(), bound.clone(), ctx).map_err(|err| TcErr::IncompatibleBound {
+            key: this,
+            ty: self.ty.clone(),
+            bound,
+            err,
+        })?;
 
         let (new_children, equates) = self.combine_children(this, &self.children, &new_ty.arity(ctx).into())?;
         assert!(equates.is_empty());

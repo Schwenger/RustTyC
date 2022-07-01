@@ -1,11 +1,9 @@
-use crate::Type;
-use crate::children::{Children, ChildAccessor, Arity};
+use crate::children::{Arity, ChildAccessor, Children};
 use crate::constraint_graph::ConstraintGraph;
-use crate::type_table::{TypeTable, Preliminary, PreliminaryTypeTable, Constructable};
+use crate::keys::{Constraint, Key};
+use crate::type_table::{Constructable, Preliminary, PreliminaryTypeTable, TypeTable};
 use crate::types::ContextType;
-use crate::{
-    keys::{Constraint, Key},
-};
+use crate::Type;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -82,11 +80,7 @@ impl<T: Type, Var: VarId> TypeChecker<T, Var> {
 impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     /// Creates a new, empty type checker with the given context.  
     pub fn with_context(context: T::Context) -> Self {
-        TypeChecker {
-            variables: HashMap::new(),
-            graph: ConstraintGraph::new(),
-            context,
-        }
+        TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new(), context }
     }
 
     /// Generates a new key representing a term.  
@@ -123,11 +117,7 @@ impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `name` results in the same key.
     pub fn get_child_key(&mut self, parent: Key, child: ChildAccessor) -> Result<Key, TcErr<T>> {
-        let TypeChecker { 
-            graph, 
-            variables: _, 
-            context: _ 
-        } = self;
+        let TypeChecker { graph, variables: _, context: _ } = self;
 
         let key = graph.impose_child(parent, child)?;
         Ok(key)
@@ -153,11 +143,8 @@ impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
 
     /// Lifts a collection of keys as indexed children into a certain recursive variant.
     pub fn lift_into_partial_indexed(&mut self, ty: T, mut sub_types: Vec<Option<Key>>) -> Key {
-        let sub_types: HashMap<_, _> = sub_types
-            .drain(..)
-            .enumerate()
-            .map(|(idx, sub)| (ChildAccessor::Index(idx), sub))
-            .collect();
+        let sub_types: HashMap<_, _> =
+            sub_types.drain(..).enumerate().map(|(idx, sub)| (ChildAccessor::Index(idx), sub)).collect();
         self.lift_into_partial(ty, sub_types)
     }
 
@@ -197,7 +184,7 @@ impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     }
 }
 
-impl<T: ContextType, V: VarId> TypeChecker<T, V> 
+impl<T: ContextType, V: VarId> TypeChecker<T, V>
 where
     T: Constructable,
 {
@@ -210,7 +197,7 @@ where
         let TypeChecker { graph, variables: _, context, .. } = self;
         graph.solve_preliminary(context)
     }
-    
+
     /// Finalizes the type check procedure.
     /// Calling this function indicates that all relevant information was passed on to the type checker.
     /// It will attempt to resolve all constraints and return a type table mapping each registered key to its
@@ -225,7 +212,6 @@ where
 /// Represents an error during the type check procedure.
 #[derive(Debug, Clone)]
 pub enum TcErr<T: ContextType> {
-
     InvalidChildAccessInfered(Key, T, Children, ChildAccessor),
     InvalidChildAccessForArity(Key, T, ChildAccessor),
     IncompatibleTypes {
@@ -241,7 +227,7 @@ pub enum TcErr<T: ContextType> {
         bound: T,
         err: T::Err,
     },
-    ArityMismatch{
+    ArityMismatch {
         key1: Key,
         arity1: Arity,
         key2: Key,
@@ -250,7 +236,6 @@ pub enum TcErr<T: ContextType> {
     /// An error reporting a failed type construction.  Contains the affected key, the preliminary result for which the construction failed, and the
     /// error reported by the construction.
     Construction(Key, Preliminary<T>, T::Err),
-    
 
     /// Two keys were attempted to be equated and their underlying types turned out to be incompatible.
     /// Contains the two keys and the error that occurred when attempting to meet their [ContextSensitiveVariant] types.

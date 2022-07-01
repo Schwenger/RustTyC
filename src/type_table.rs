@@ -1,6 +1,6 @@
-use std::{iter::FromIterator, collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug, iter::FromIterator};
 
-use crate::{ContextType, children::Children, Key, types::UpperBoundedType};
+use crate::{children::Children, types::UpperBoundedType, ContextType, Key};
 
 /// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].
 #[derive(Debug, Clone)]
@@ -70,12 +70,8 @@ pub trait Constructable: ContextType {
     type Type: Clone + Debug + UpperBoundedType;
     /// Attempts to transform `self` into an more concrete `Self::Type`.
     /// Returns a [ContextSensitiveVariant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
-    fn construct(
-        &self,
-        children: ResolvedChildren<Self::Type>,
-    ) -> Result<Self::Type, <Self as ContextType>::Err>;
+    fn construct(&self, children: ResolvedChildren<Self::Type>) -> Result<Self::Type, <Self as ContextType>::Err>;
 }
-
 
 /// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [ContextSensitiveVariant] does not implement [Constructable].
 pub type PreliminaryTypeTable<T> = HashMap<Key, Preliminary<T>>;

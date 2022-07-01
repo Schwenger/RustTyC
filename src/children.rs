@@ -14,7 +14,6 @@ pub enum Children {
 }
 
 impl Children {
-
     pub(crate) fn top() -> Self {
         Self::Variable(HashMap::new())
     }
@@ -22,9 +21,9 @@ impl Children {
     pub(crate) fn empty() -> Self {
         Self::Variable(HashMap::new())
     }
-    
+
     pub(crate) fn all_indexed(&self) -> bool {
-       self.all(ChildAccessor::is_index)
+        self.all(ChildAccessor::is_index)
     }
 
     pub(crate) fn all_field(&self) -> bool {
@@ -47,13 +46,13 @@ impl Children {
         Ok(self._valid_child_access(child)?.get(child).cloned().flatten())
     }
 
-    pub(crate) fn all<F>(&self, f: F) -> bool 
+    pub(crate) fn all<F>(&self, f: F) -> bool
     where
-        F: FnMut(&ChildAccessor) -> bool, 
+        F: FnMut(&ChildAccessor) -> bool,
     {
         match self {
             Self::None => true,
-            Self::Variable(inner) => inner.keys().all(f)
+            Self::Variable(inner) => inner.keys().all(f),
         }
     }
 
@@ -63,11 +62,11 @@ impl Children {
         debug_assert!(all_field || all_indexed);
         let access_matches = child.is_field() == all_field;
         if !access_matches || self.is_none() {
-            return Err(ChildAccessErr{ children: self.clone(), accessor: child.clone() });
+            return Err(ChildAccessErr { children: self.clone(), accessor: child.clone() });
         }
         if let Children::Variable(inner) = self {
             return Ok(inner);
-        } 
+        }
         unreachable!("Rework this function.")
     }
 
@@ -80,11 +79,15 @@ impl Children {
             if access_matches {
                 return Ok(inner);
             }
-        } 
-        Err(ChildAccessErr{ children: self.clone(), accessor: child.clone() })
+        }
+        Err(ChildAccessErr { children: self.clone(), accessor: child.clone() })
     }
 
-    pub(crate) fn add_potential_child(&mut self, child: &ChildAccessor, child_key: Option<Key>) -> Result<ReqsMerge, ChildAccessErr> {
+    pub(crate) fn add_potential_child(
+        &mut self,
+        child: &ChildAccessor,
+        child_key: Option<Key>,
+    ) -> Result<ReqsMerge, ChildAccessErr> {
         let inner = self._valid_child_access_mut(child)?;
         let res = match inner.get(child).cloned().flatten() {
             Some(old) => Ok(ReqsMerge::Yes(old)),
@@ -100,7 +103,7 @@ impl Children {
 
     pub(crate) fn to_vec(&self) -> Vec<(&ChildAccessor, &Option<Key>)> {
         match self {
-            Children::None => vec!(),
+            Children::None => vec![],
             Children::Variable(inner) => inner.iter().collect(),
         }
     }
@@ -109,17 +112,11 @@ impl Children {
         match arity {
             Arity::None => Children::None,
             Arity::Variable => Children::Variable(HashMap::new()),
-            Arity::Fields(fields) => Children::Variable(
-                fields.into_iter()
-                    .map(ChildAccessor::Field)
-                    .map(|acc| (acc, None))
-                    .collect()
-            ),
+            Arity::Fields(fields) => {
+                Children::Variable(fields.into_iter().map(ChildAccessor::Field).map(|acc| (acc, None)).collect())
+            }
             Arity::Indices { greatest } => Children::Variable(
-                (0..=greatest).into_iter()
-                    .map(ChildAccessor::Index)
-                    .map(|acc| (acc, None))
-                    .collect()
+                (0..=greatest).into_iter().map(ChildAccessor::Index).map(|acc| (acc, None)).collect(),
             ),
         }
     }
@@ -161,7 +158,6 @@ pub(crate) struct ChildAccessErr {
     pub(crate) accessor: ChildAccessor,
 }
 
-
 // /// Represents the arity of a [Variant] or [ContextSensitiveVariant].
 // /// The arity of a variant corresponds directly to the [ChildConstraint] of a type in the following manner:
 // /// * `Arity::Variable <=> ChildConstraint::Unconstrained`
@@ -176,7 +172,9 @@ pub enum Arity {
     Variable,
     /// The arity is fixed and the children are accessed by name.
     Fields(HashSet<String>),
-    Indices { greatest: usize },
+    Indices {
+        greatest: usize,
+    },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -207,7 +205,6 @@ impl ChildAccessor {
 }
 
 impl Arity {
-
     pub fn for_tuple(of_size: usize) -> Self {
         Arity::Indices { greatest: of_size }
     }

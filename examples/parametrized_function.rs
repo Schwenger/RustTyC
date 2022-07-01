@@ -1,6 +1,6 @@
 use rusttyc::types::{ChildConstraint, ResolvedChildren};
 use rusttyc::{
-    types::Arity, Constructable, Infered, TcErr, Key, VarId, TypeChecker, Type as TcVariant, VarlessTypeChecker,
+    types::Arity, Constructable, Infered, Key, TcErr, Type as TcVariant, TypeChecker, VarId, VarlessTypeChecker,
 };
 use std::cmp::max;
 use std::convert::TryInto;

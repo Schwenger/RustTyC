@@ -1,13 +1,10 @@
-use crate::children::{Children, ChildAccessor, ReqsMerge};
-use crate::type_table::{TypeTable, PreliminaryTypeTable, Constructable};
-use crate::{
-    types::ContextType,
-    TcErr, Key,
-};
+use crate::children::{ChildAccessor, Children, ReqsMerge};
+use crate::type_table::{Constructable, PreliminaryTypeTable, TypeTable};
+use crate::{types::ContextType, Key, TcErr};
 
-mod inference_logic;
 mod construction_logic;
 mod graph_logic;
+mod inference_logic;
 mod type_info;
 use graph_logic::Vertex;
 
@@ -77,11 +74,9 @@ impl<T: ContextType> ConstraintGraph<T> {
     pub(crate) fn explicit_bound(&mut self, target: Key, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
         self.add_explicit_bound(target, bound, context).map(|_| ())
     }
-
 }
 
 impl<T: ContextType> ConstraintGraph<T> {
-    
     #[must_use]
     fn is_cyclic(&self) -> bool {
         self.vertices.iter().any(|v| self.is_in_loop(v, vec![]))

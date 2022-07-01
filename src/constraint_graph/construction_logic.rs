@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 
-use crate::{type_table::{PreliminaryTypeTable, Constructable, TypeTable, ResolvedChildren, Preliminary}, TcErr, Key};
 use crate::types::UpperBoundedType;
+use crate::{
+    type_table::{Constructable, Preliminary, PreliminaryTypeTable, ResolvedChildren, TypeTable},
+    Key, TcErr,
+};
 
-use super::{ConstraintGraph, graph_logic::FullVertex};
-
+use super::{graph_logic::FullVertex, ConstraintGraph};
 
 impl<T> ConstraintGraph<T>
 where
     T: Constructable,
 {
-
     pub(crate) fn construct_preliminary(self) -> PreliminaryTypeTable<T> {
         self.vertices
             .iter()
@@ -39,7 +40,8 @@ where
             for v in open {
                 let children = v.ty.children.clone();
                 if children.is_none() {
-                    let ty = v.ty.ty
+                    let ty =
+                        v.ty.ty
                             .construct(ResolvedChildren::None)
                             .map_err(|e| TcErr::Construction(v.this, v.ty.clone().into_preliminary(), e))?;
                     let _ = resolved.insert(v.this, ty);
@@ -47,9 +49,7 @@ where
                     let mut resolved_children = Vec::new();
                     for (_child, key) in children.to_vec() {
                         let constructed = if let Some(key) = key {
-                            resolved
-                                .get(&self.repr(*key).this)
-                                .cloned()
+                            resolved.get(&self.repr(*key).this).cloned()
                         } else {
                             Some(Self::unresolved_type())
                         };
@@ -57,11 +57,9 @@ where
                     }
                     if resolved_children.iter().all(Option::is_some) {
                         let children = if children.all_field() {
-                            debug_assert_eq!(
-                                resolved_children.iter().flatten().count(), 
-                                children.to_vec().len()
-                            );
-                            let children_map = children.to_vec()
+                            debug_assert_eq!(resolved_children.iter().flatten().count(), children.to_vec().len());
+                            let children_map = children
+                                .to_vec()
                                 .into_iter()
                                 .map(|(child, _)| child.field().unwrap())
                                 .zip(resolved_children.into_iter().flatten())
@@ -69,11 +67,9 @@ where
                             debug_assert_eq!(children_map.len(), children.to_vec().len());
                             ResolvedChildren::Named(children_map)
                         } else {
-                            debug_assert_eq!(
-                                resolved_children.iter().flatten().count(), 
-                                children.to_vec().len()
-                            );
-                            let mut children_map = children.to_vec()
+                            debug_assert_eq!(resolved_children.iter().flatten().count(), children.to_vec().len());
+                            let mut children_map = children
+                                .to_vec()
                                 .into_iter()
                                 .map(|(child, _)| child.index().unwrap())
                                 .zip(resolved_children.into_iter().flatten())
@@ -83,9 +79,10 @@ where
                             debug_assert_eq!(children_map.len(), children.to_vec().len());
                             ResolvedChildren::Indexed(children_map)
                         };
-                        let ty = v.ty.ty
-                            .construct(children)
-                            .map_err(|e| TcErr::Construction(v.this, v.ty.clone().into_preliminary(), e))?;
+                        let ty =
+                            v.ty.ty
+                                .construct(children)
+                                .map_err(|e| TcErr::Construction(v.this, v.ty.clone().into_preliminary(), e))?;
                         let _ = resolved.insert(v.this, ty);
                     } else {
                         still_open.push(v)

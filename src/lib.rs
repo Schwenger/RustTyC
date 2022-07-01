@@ -93,17 +93,15 @@
     unused_results
 )]
 
+mod children;
 pub(crate) mod constraint_graph;
 mod keys;
 #[cfg(test)]
 mod tests;
 mod type_checker;
 mod type_table;
-mod children;
 pub mod types;
 
 pub use keys::Key;
-pub use type_checker::{TcErr, VarId, TypeChecker, VarlessTypeChecker};
-pub use types::{
-    ContextType, Infered, Type,
-};
+pub use type_checker::{TcErr, TypeChecker, VarId, VarlessTypeChecker};
+pub use types::{ContextType, Infered, Type};

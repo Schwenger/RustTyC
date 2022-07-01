@@ -1,6 +1,6 @@
-use crate::{ContextType, TcErr, Key, children::Equates};
+use crate::{children::Equates, ContextType, Key, TcErr};
 
-use super::{ConstraintGraph, type_info::TypeInfo, graph_logic::Vertex};
+use super::{graph_logic::Vertex, type_info::TypeInfo, ConstraintGraph};
 
 impl<T: ContextType> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  
@@ -31,8 +31,7 @@ impl<T: ContextType> ConstraintGraph<T> {
                     vertex.ty.upper_bounds.iter().map(|b| (&self.repr(*b).ty, *b)).fold(Ok(initial), |lhs, rhs| {
                         let (mut old_ty, mut equates) = lhs?;
                         let (rhs, partner_key) = rhs;
-                        let new_equates =
-                            old_ty.meet(key, partner_key, rhs, context)?;
+                        let new_equates = old_ty.meet(key, partner_key, rhs, context)?;
                         // Meet-Alternative:
                         // let (old_ty, mut equates) = lhs?;
                         // let (new_ty, new_equates) = old_ty.meet(key, rhs)?;

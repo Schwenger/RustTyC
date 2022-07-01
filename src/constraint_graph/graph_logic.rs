@@ -1,6 +1,6 @@
 use crate::{ContextType, Key, TcErr};
 
-use super::{ConstraintGraph, type_info::TypeInfo};
+use super::{type_info::TypeInfo, ConstraintGraph};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Vertex<T: ContextType> {
@@ -58,7 +58,6 @@ pub(crate) struct FullVertex<T: ContextType> {
 }
 
 impl<T: ContextType> ConstraintGraph<T> {
-    
     /// Transforms `sub` into a forward to `repr`.
     pub(crate) fn establish_fwd(&mut self, sub: Key, repr: Key, context: &T::Context) -> Result<(), TcErr<T>> {
         if sub == repr {

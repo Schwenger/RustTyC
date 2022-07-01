@@ -1,7 +1,7 @@
 use crate::types::{ChildConstraint, ResolvedChildren};
 use crate::{
-    type_checker::VarlessTypeChecker, types::Arity, Constructable, ContextType, Infered,
-    PreliminaryTypeTable, TcErr, Key, VarId, TypeChecker, TypeTable, Type as TcVariant,
+    type_checker::VarlessTypeChecker, types::Arity, Constructable, ContextType, Infered, Key, PreliminaryTypeTable,
+    TcErr, Type as TcVariant, TypeChecker, TypeTable, VarId,
 };
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
@@ -442,10 +442,7 @@ impl ContextType for StructVariant {
 impl Constructable for StructVariant {
     type Type = ConcreteStructType;
 
-    fn construct(
-        &self,
-        children: ResolvedChildren<Self::Type>,
-    ) -> Result<Self::Type, <Self as ContextType>::Err> {
+    fn construct(&self, children: ResolvedChildren<Self::Type>) -> Result<Self::Type, <Self as ContextType>::Err> {
         match self {
             StructVariant::Any => Ok(ConcreteStructType::String),
             StructVariant::String => Ok(ConcreteStructType::String),

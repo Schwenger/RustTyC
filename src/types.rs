@@ -133,8 +133,3 @@ pub struct Infered<T: Sized> {
     /// The least requirement for children.
     pub arity: Arity,
 }
-
-
-
-
-
