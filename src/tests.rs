@@ -42,7 +42,7 @@ impl Type for Variant {
         use Variant::*;
         assert_eq!(lhs.children.len(), 0, "spurious child");
         assert_eq!(rhs.children.len(), 0, "spurious child");
-        let variant = match (lhs.variant, rhs.variant) {
+        let variant = match (lhs.ty, rhs.ty) {
             (Any, other) | (other, Any) => Ok(other),
             (Integer(l), Integer(r)) => Ok(Integer(max(r, l))),
             (Fixed(li, lf), Fixed(ri, rf)) => Ok(Fixed(max(li, ri), max(lf, rf))),
@@ -54,7 +54,7 @@ impl Type for Variant {
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
             (Numeric, Numeric) => Ok(Numeric),
         }?;
-        Ok(Infered { variant, children: ChildConstraint::NoChildren })
+        Ok(Infered { ty: variant, children: ChildConstraint::NoChildren })
     }
 
     fn arity(&self) -> Arity<String> {
@@ -397,8 +397,8 @@ impl ContextType for StructVariant {
     }
 
     fn meet(lhs: Infered<Self>, rhs: Infered<Self>, _ctx: &Self::Context) -> Result<Infered<Self>, Self::Err> {
-        let Infered { variant: lhs, children: l_constraint } = lhs;
-        let Infered { variant: rhs, children: r_constraint } = rhs;
+        let Infered { ty: lhs, children: l_constraint } = lhs;
+        let Infered { ty: rhs, children: r_constraint } = rhs;
 
         let (new_var, new_constr) = match (lhs, rhs) {
             (StructVariant::Any, other) => (other, r_constraint),
@@ -422,7 +422,7 @@ impl ContextType for StructVariant {
             }
             (StructVariant::Struct(_), _) => return Err("Structs only with structs with the same name".into()),
         };
-        Ok(Infered { variant: new_var, children: new_constr })
+        Ok(Infered { ty: new_var, children: new_constr })
     }
 
     fn arity(&self, ctx: &Self::Context) -> Arity<String> {

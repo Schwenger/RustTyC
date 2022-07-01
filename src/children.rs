@@ -8,177 +8,215 @@ use crate::Key;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Children {
     /// There are no known children yet.
-    Unknown,
+    Variable(InferedChildMap),
     /// The type doesn't have any children.
     None,
-    /// The type has indexed children represented by the collection within.
-    Indexed(Vec<Option<Key>>),
-    /// The type has named children represented by the collection within.
-    Named(HashMap<usize, Option<Key>>),
 }
 
 impl Children {
-    pub(crate) fn len(&self) -> Option<usize> {
+
+    pub(crate) fn top() -> Self {
+        Self::Variable(HashMap::new())
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self::Variable(HashMap::new())
+    }
+    
+    pub(crate) fn all_indexed(&self) -> bool {
+       self.all(ChildAccessor::is_index)
+    }
+
+    pub(crate) fn all_field(&self) -> bool {
+        self.all(ChildAccessor::is_field)
+    }
+
+    #[allow(unused)]
+    pub(crate) fn is_variable(&self) -> bool {
         match self {
-            Children::Unknown => None,
-            Children::None => Some(0),
-            Children::Indexed(c) => Some(c.len()),
-            Children::Named(c) => Some(c.len()),
+            Self::Variable(inner) => inner.is_empty(),
+            Self::None => false,
         }
     }
 
-    pub(crate) fn is_indexed(&self) -> bool {
-        matches!(self, Children::Indexed(_))
+    pub(crate) fn is_none(&self) -> bool {
+        matches!(self, Children::None)
     }
 
-    pub(crate) fn is_named(&self) -> bool {
-        matches!(self, Children::Named(_))
+    pub(crate) fn child(&self, child: &ChildAccessor) -> Result<Option<Key>, ChildAccessErr> {
+        Ok(self._valid_child_access(child)?.get(&child).cloned().flatten())
     }
 
-    pub(crate) fn indexed(&self) -> Option<&Vec<Option<Key>>> {
+    pub(crate) fn all<F>(&self, f: F) -> bool 
+    where
+        F: FnMut(&ChildAccessor) -> bool, 
+    {
         match self {
-            Children::Indexed(res) => Some(res),
-            Children::Unknown | Children::Named(_) | Children::None => None,
+            Self::None => true,
+            Self::Variable(inner) => inner.keys().all(f)
         }
     }
 
-    pub(crate) fn indexed_mut(&mut self) -> Option<&mut Vec<Option<Key>>> {
-        match self {
-            Children::Indexed(res) => Some(res),
-            Children::Unknown => {
-                *self = Children::Indexed(vec![]);
-                self.indexed_mut()
+    fn _valid_child_access_mut(&mut self, child: &ChildAccessor) -> Result<&mut InferedChildMap, ChildAccessErr> {
+        let all_field = self.all_field();
+        let all_indexed = self.all_indexed();
+        debug_assert!(all_field || all_indexed);
+        let access_matches = child.is_field() == all_field;
+        if !access_matches || self.is_none() {
+            return Err(ChildAccessErr{ children: self.clone(), accessor: child.clone() });
+        }
+        if let Children::Variable(inner) = self {
+            return Ok(inner);
+        } 
+        unreachable!("Rework this function.")
+    }
+
+    fn _valid_child_access(&self, child: &ChildAccessor) -> Result<&InferedChildMap, ChildAccessErr> {
+        let all_field = self.all_field();
+        let all_indexed = self.all_indexed();
+        debug_assert!(all_field || all_indexed);
+        let access_matches = child.is_field() == all_field;
+        if let Children::Variable(inner) = self {
+            if access_matches {
+                return Ok(inner);
             }
-            Children::Named(_) | Children::None => None,
+        } 
+        return Err(ChildAccessErr{ children: self.clone(), accessor: child.clone() });
+    }
+
+    pub(crate) fn valid_child_access(&self, child: &ChildAccessor) -> Result<(), ChildAccessErr> {
+        self._valid_child_access(child).map(|_| ())
+    }
+
+    pub(crate) fn add_potential_child(&mut self, child: &ChildAccessor, child_key: Option<Key>) -> Result<ReqsMerge, ChildAccessErr> {
+        let inner = self._valid_child_access_mut(child)?;
+        let res = match inner.get(&child).cloned().flatten() {
+            Some(old) => Ok(ReqsMerge::Yes(old)),
+            None => Ok(ReqsMerge::No),
+        };
+        let _ = inner.insert(child.clone(), child_key);
+        return res;
+    }
+
+    pub(crate) fn add_child(&mut self, child: &ChildAccessor, child_key: Key) -> Result<ReqsMerge, ChildAccessErr> {
+        self.add_potential_child(child, Some(child_key))
+    }
+
+    pub(crate) fn to_vec(&self) -> Vec<(&ChildAccessor, &Option<Key>)> {
+        match self {
+            Children::None => vec!(),
+            Children::Variable(inner) => inner.iter().collect(),
         }
     }
 
-    pub(crate) fn named(&self) -> Option<&HashMap<usize, Option<Key>>> {
-        match self {
-            Children::Named(res) => Some(res),
-            Children::Unknown | Children::Indexed(_) | Children::None => None,
-        }
-    }
-
-    pub(crate) fn named_mut(&mut self) -> Option<&mut HashMap<usize, Option<Key>>> {
-        match self {
-            Children::Named(res) => Some(res),
-            Children::Unknown => {
-                *self = Children::Named(HashMap::new());
-                self.named_mut()
-            }
-            Children::Indexed(_) | Children::None => None,
-        }
-    }
-
-    pub(crate) fn to_constraint(&self) -> ChildConstraint {
-        match self {
-            Children::Unknown => ChildConstraint::Unconstrained,
-            Children::None => ChildConstraint::NoChildren,
-            Children::Indexed(c) => ChildConstraint::Indexed(c.len()),
-            Children::Named(c) => ChildConstraint::Named(c.keys().copied().collect()),
+    pub(crate) fn from_arity(arity: Arity) -> Self {
+        match arity {
+            Arity::None => Children::None,
+            Arity::Variable => Children::Variable(HashMap::new()),
+            Arity::Fields(fields) => Children::Variable(
+                fields.into_iter()
+                    .map(ChildAccessor::Field)
+                    .map(|acc| (acc, None))
+                    .collect()
+            ),
+            Arity::Indices { greatest } => Children::Variable(
+                (0..=greatest).into_iter()
+                    .map(ChildAccessor::Index)
+                    .map(|acc| (acc, None))
+                    .collect()
+            ),
         }
     }
 }
 
+impl From<Arity> for Children {
+    fn from(arity: Arity) -> Self {
+        Self::from_arity(arity)
+    }
+}
 
+pub(crate) type InferedChildMap = HashMap<ChildAccessor, Option<Key>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ReqsMerge {
+    Yes(Key),
+    No,
+}
+
+impl ReqsMerge {
+    pub(crate) fn as_opt(&self) -> Option<Key> {
+        match self {
+            Self::Yes(key) => Some(*key),
+            Self::No => None,
+        }
+    }
+
+    pub(crate) fn zip(&self, other: Option<Key>) -> Option<(Key, Key)> {
+        self.as_opt().zip(other)
+    }
+}
+
+pub(crate) type Equates = Vec<Equate>;
+pub(crate) type Equate = (Key, Key);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChildAccessErr {
+    pub(crate) children: Children,
+    pub(crate) accessor: ChildAccessor,
+}
+
+
+// /// Represents the arity of a [Variant] or [ContextSensitiveVariant].
+// /// The arity of a variant corresponds directly to the [ChildConstraint] of a type in the following manner:
+// /// * `Arity::Variable <=> ChildConstraint::Unconstrained`
+// /// * `Arity::None <=> ChildConstraint::NoChildren`
+// /// * `Arity::FixedIndexed(idx) <=> ChildConstraint::Indexed(idx)`
+// /// * `Arity::FixedNamed(names) <=> ChildConstraint::Named(names)`
 #[derive(Debug, Clone)]
-/// Represents the current (incomplete) information the type checker has about the children of a type.
-pub enum ChildConstraint {
-    /// The type should not have any children.
-    NoChildren,
-    /// There is no information about the children yet. They can be either `NoChildren`, `Indexed` or `Named`
-    Unconstrained,
-    /// Children are expected to be accessed through indices.
-    /// The number represents the least amount of children the type will have.
-    Indexed(usize),
-    /// Children are expected to be accessed by names.
-    /// The HashSet represents the minimum set of fields required.
-    Named(HashSet<usize>),
-}
-
-impl ChildConstraint {
-    /// The least number of children there are.
-    pub fn len(&self) -> usize {
-        match self {
-            ChildConstraint::Unconstrained => 0,
-            ChildConstraint::NoChildren => 0,
-            ChildConstraint::Indexed(size) => *size,
-            ChildConstraint::Named(set) => set.len(),
-        }
-    }
-
-    /// Expects the children to be accessed by name and returns the HashSet representing the minimum set of fields the type will have.
-    /// Panics if th children are not accessed by name.
-    pub fn names(&self) -> &HashSet<usize> {
-        match self {
-            ChildConstraint::Named(set) => set,
-            ChildConstraint::Indexed(_) | ChildConstraint::Unconstrained | ChildConstraint::NoChildren => {
-                panic!("Child constraint is not named")
-            }
-        }
-    }
-
-    /// Expects the children to be accessed through indices and returns least amount of children the type will have.
-    /// Panics if th children are not accessed through indices.
-    pub fn index(&self) -> usize {
-        match self {
-            ChildConstraint::Indexed(idx) => *idx,
-            ChildConstraint::Named(_) | ChildConstraint::Unconstrained | ChildConstraint::NoChildren => {
-                panic!("Child constraint is not named")
-            }
-        }
-    }
-}
-
-/// Represents the arity of a [Variant] or [ContextSensitiveVariant].
-/// The arity of a variant corresponds directly to the [ChildConstraint] of a type in the following manner:
-/// * `Arity::Variable <=> ChildConstraint::Unconstrained`
-/// * `Arity::None <=> ChildConstraint::NoChildren`
-/// * `Arity::FixedIndexed(idx) <=> ChildConstraint::Indexed(idx)`
-/// * `Arity::FixedNamed(names) <=> ChildConstraint::Named(names)`
-#[derive(Debug, Clone)]
-pub enum Arity<R: Debug + Clone + Hash> {
+pub enum Arity {
     /// The Type should have no children at all.
     None,
     /// The arity is variable, i.e., it does not have a specific value.
     Variable,
-    /// The arity is fixed and the children are accessed by index.
-    FixedIndexed(usize),
     /// The arity is fixed and the children are accessed by name.
-    FixedNamed(HashSet<R>),
+    Fields(HashSet<String>),
+    Indices { greatest: usize },
 }
 
-impl<R: Debug + Clone + Hash> Arity<R> {
-    /// Transform `self` into an option, i.e., it will yield a `Some` with its arity if defined and `None` otherwise.
-    pub(crate) fn to_opt(&self) -> Option<usize> {
-        match self {
-            Arity::Variable => None,
-            Arity::None => Some(0),
-            Arity::FixedIndexed(n) => Some(*n),
-            Arity::FixedNamed(s) => Some(s.len()),
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum ChildAccessor {
+    Index(usize),
+    Field(String), // TODO!
+}
+
+impl ChildAccessor {
+    pub fn is_field(&self) -> bool {
+        matches!(self, Self::Field(_))
+    }
+    pub fn is_index(&self) -> bool {
+        matches!(self, Self::Index(_))
+    }
+    pub fn index(&self) -> Option<usize> {
+        return match self {
+            Self::Index(idx) => Some(*idx),
+            Self::Field(_) => None,
+        }
+    }
+    pub fn field(&self) -> Option<String> {
+        return match self {
+            Self::Index(_) => None,
+            Self::Field(field) => Some(field.clone()),
         }
     }
 }
 
-impl Arity<String> {
-    /// Substitutes the strings in case of `FixedNamed` with usizes according to the given map.
-    pub(crate) fn substitute(&self, child_ids: &HashMap<String, usize>) -> Arity<usize> {
-        match self {
-            Arity::Variable => Arity::Variable,
-            Arity::None => Arity::None,
-            Arity::FixedIndexed(idx) => Arity::FixedIndexed(*idx),
-            Arity::FixedNamed(names) => Arity::FixedNamed(names.iter().map(|k| child_ids[k]).collect()),
-        }
+impl Arity {
+
+    pub fn for_tuple(of_size: usize) -> Self {
+        Arity::Indices { greatest: of_size }
     }
-}
-impl From<Arity<usize>> for ChildConstraint {
-    fn from(a: Arity<usize>) -> Self {
-        match a {
-            Arity::Variable => ChildConstraint::Unconstrained,
-            Arity::None => ChildConstraint::NoChildren,
-            Arity::FixedIndexed(idx) => ChildConstraint::Indexed(idx),
-            Arity::FixedNamed(names) => ChildConstraint::Named(names),
-        }
+
+    pub fn for_struct(with_fields: HashSet<String>) -> Self {
+        Arity::Fields(with_fields)
     }
 }

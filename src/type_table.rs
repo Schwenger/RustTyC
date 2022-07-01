@@ -1,6 +1,6 @@
 use std::{iter::FromIterator, collections::HashMap, fmt::Debug};
 
-use crate::{ContextType, children::Children, Key};
+use crate::{ContextType, children::Children, Key, types::UpperBoundedType};
 
 /// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].
 #[derive(Debug, Clone)]
@@ -67,7 +67,7 @@ impl<T: Clone + Debug> ResolvedChildren<T> {
 /// A type implementing this trait can potentially be transformed into a concrete representation. This transformation can fail.
 pub trait Constructable: ContextType {
     /// The result type of the attempted construction.
-    type Type: Clone + Debug;
+    type Type: Clone + Debug + UpperBoundedType;
     /// Attempts to transform `self` into an more concrete `Self::Type`.
     /// Returns a [ContextSensitiveVariant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
     fn construct(

@@ -7,23 +7,20 @@
 
 use std::fmt::Debug;
 
-use crate::children::{ChildConstraint, Arity};
+use crate::children::Arity;
 
 /// A [Variant] which requires a context for meet operations and equality checks.
 ///
 /// See [Variant] for general information and requirements on the implementation.
 /// The context will ever only be borrowed without further requirements on it, in particular,
 /// it does not have to implement [Clone].
-pub trait ContextType: Sized + Clone + Debug {
+pub trait ContextType: Sized + Clone + Debug + UpperBoundedType {
     /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
     /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
     type Err: Debug;
 
     /// Represents the meet- and equality context.
     type Context: Debug;
-
-    /// Returns the unconstrained, most abstract type.
-    fn top() -> Self;
 
     /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
     /// Refer to [Variant] for the responsibilities of this function.
@@ -32,16 +29,21 @@ pub trait ContextType: Sized + Clone + Debug {
     /// If successful, the variant and arity of the resulting partial have to match, i.e., if the [Arity] fo the variant
     /// is fixed as `n` then [Partial::children] needs to be `n` as well.
     /// See [Arity] for a more detailed description of this relation.
-    fn meet(lhs: Infered<Self>, rhs: Infered<Self>, ctx: &Self::Context) -> Result<Infered<Self>, Self::Err>;
+    fn meet(lhs: Self, rhs: Self, ctx: &Self::Context) -> Result<Self, Self::Err>;
 
     /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
     /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
     /// the tuple has a variable arity and potentially a different variant.
-    fn arity(&self, ctx: &Self::Context) -> Arity<String>;
+    fn arity(&self, ctx: &Self::Context) -> Arity;
 
     /// Context-sensitive version of [Eq].  All rules apply.
     fn equal(this: &Self, that: &Self, ctx: &Self::Context) -> bool;
+}
+
+pub trait UpperBoundedType {
+    /// Returns the unconstrained, most abstract type.
+    fn top() -> Self;
 }
 
 /// A variant that will be inferred during the type checking procedure.
@@ -81,13 +83,10 @@ pub trait ContextType: Sized + Clone + Debug {
 /// If the variant requires a context for the meet and/or equality operation, refer to [ContextSensitiveVariant].
 /// Each [Variant] automatically implements [ContextSensitiveVariant].
 ///
-pub trait Type: Sized + Clone + Debug + Eq {
+pub trait Type: Sized + Clone + Debug + Eq + UpperBoundedType {
     /// Result of a meet of two incompatible type, i.e., it represents a type contradiction.
     /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
     type Err: Debug;
-
-    /// Returns the unconstrained, most abstract type.
-    fn top() -> Self;
 
     /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
     /// Refer to [Variant] for the responsibilities of this function.
@@ -96,13 +95,13 @@ pub trait Type: Sized + Clone + Debug + Eq {
     /// If successful, the variant and arity of the resulting partial have to match, i.e., if the [Arity] fo the variant
     /// is fixed as `n` then [Partial::children] needs to be `n` as well.
     /// See [Arity] for a more detailed description of this relation.
-    fn meet(lhs: Infered<Self>, rhs: Infered<Self>) -> Result<Infered<Self>, Self::Err>;
+    fn meet(lhs: Self, rhs: Self) -> Result<Self, Self::Err>;
 
     /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
     /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
     /// the tuple has a variable arity and potentially a different variant.
-    fn arity(&self) -> Arity<String>;
+    fn arity(&self) -> Arity;
 }
 
 impl<T: Type> ContextType for T {
@@ -110,15 +109,11 @@ impl<T: Type> ContextType for T {
 
     type Context = ();
 
-    fn top() -> Self {
-        T::top()
-    }
-
-    fn meet(lhs: Infered<Self>, rhs: Infered<Self>, _ctx: &Self::Context) -> Result<Infered<Self>, Self::Err> {
+    fn meet(lhs: Self, rhs: Self, _ctx: &Self::Context) -> Result<Self, Self::Err> {
         T::meet(lhs, rhs)
     }
 
-    fn arity(&self, _ctx: &Self::Context) -> Arity<String> {
+    fn arity(&self, _ctx: &Self::Context) -> Arity {
         self.arity()
     }
 
@@ -127,8 +122,6 @@ impl<T: Type> ContextType for T {
     }
 }
 
-
-
 /// Partial is a container for a [ContextSensitiveVariant] and the least arity a particular instance of this variant currently has. Only used for [ContextSensitiveVariant::meet()].
 ///
 /// The `children` represent the current knowledge of the type checker about the children of the type.
@@ -136,9 +129,9 @@ impl<T: Type> ContextType for T {
 #[derive(Debug, Clone)]
 pub struct Infered<T: Sized> {
     /// The variant represented by this `Partial`.
-    pub variant: T,
+    pub ty: T,
     /// The least requirement for children.
-    pub children: ChildConstraint,
+    pub arity: Arity,
 }
 
 

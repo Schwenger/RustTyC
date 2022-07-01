@@ -40,7 +40,7 @@ impl Type for Variant {
         use Variant::*;
         assert_eq!(lhs.children.len(), 0, "spurious child");
         assert_eq!(rhs.children.len(), 0, "spurious child");
-        let variant = match (lhs.variant, rhs.variant) {
+        let variant = match (lhs.ty, rhs.ty) {
             (Any, other) | (other, Any) => Ok(other),
             (Integer(l), Integer(r)) => Ok(Integer(max(r, l))),
             (Fixed(li, lf), Fixed(ri, rf)) => Ok(Fixed(max(li, ri), max(lf, rf))),
@@ -52,7 +52,7 @@ impl Type for Variant {
             (Numeric, Fixed(i, f)) | (Fixed(i, f), Numeric) => Ok(Fixed(i, f)),
             (Numeric, Numeric) => Ok(Numeric),
         }?;
-        Ok(Infered { variant, children: ChildConstraint::Indexed(0) })
+        Ok(Infered { ty: variant, children: ChildConstraint::Indexed(0) })
     }
 
     fn arity(&self) -> Arity<String> {

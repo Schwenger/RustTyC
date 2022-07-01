@@ -1,418 +1,157 @@
-use std::{collections::{HashSet, HashMap}, iter::FromIterator};
+use std::collections::HashSet;
 
-use crate::{ContextType, children::{Children, ChildConstraint, Arity}, Key, TcErr, constraint_graph::{OptEquateObligation, EquateObligation}, Infered, type_table::Preliminary};
-
-use super::ConstraintGraph;
+use crate::{ContextType, children::{Children, Arity, ChildAccessor, ChildAccessErr, ReqsMerge, Equates}, Key, TcErr, type_table::Preliminary};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypeInfo<T: ContextType> {
-    pub(crate) variant: T,
+    pub(crate) ty: T,
     pub(crate) children: Children,
     pub(crate) upper_bounds: HashSet<Key>,
 }
 
 impl<T: ContextType> TypeInfo<T> {
     pub(crate) fn top() -> Self {
-        TypeInfo { variant: T::top(), children: Children::Unknown, upper_bounds: HashSet::new() }
+        TypeInfo { ty: T::top(), children: Children::top(), upper_bounds: HashSet::new() }
     }
 
     pub(crate) fn equal(this: &Self, that: &Self, ctx: &T::Context) -> bool {
-        T::equal(&this.variant, &that.variant, ctx)
+        T::equal(&this.ty, &that.ty, ctx)
             && this.children == that.children
             && this.upper_bounds == that.upper_bounds
     }
 
-    pub(crate) fn apply_child_constraint_checked(
-        &mut self,
-        this: Key,
-        constraint: ChildConstraint,
-        ctx: &T::Context,
-        child_ids: &HashMap<String, usize>,
-        child_names: &[String],
-    ) -> Result<(), TcErr<T>> {
-        match (&self.variant.arity(ctx).substitute(child_ids), constraint) {
-            (Arity::None, ChildConstraint::Indexed(new_arity)) => {
-                return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity))
-            }
-            (Arity::None, ChildConstraint::Named(new)) => {
-                return Err(TcErr::FieldDoesNotExist(
-                    this,
-                    self.variant.clone(),
-                    new.into_iter().map(|k| child_names[k].clone()).collect(),
-                ))
-            }
-            (Arity::None, ChildConstraint::Unconstrained) | (Arity::None, ChildConstraint::NoChildren) => {
-                match &mut self.children {
-                    Children::Unknown => self.children = Children::None,
-                    Children::None => {}
-                    Children::Indexed(_) | Children::Named(_) => {
-                        unreachable!("Mismatch between arity type and children")
-                    }
-                }
-            }
-            (Arity::FixedIndexed(given_arity), ChildConstraint::Indexed(new_arity)) if new_arity > *given_arity => {
-                return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity))
-            }
-            (Arity::FixedIndexed(given_arity), ChildConstraint::Indexed(_)) => match &mut self.children {
-                Children::Unknown => self.children = Children::Indexed(vec![None; *given_arity]),
-                Children::Indexed(children) => ConstraintGraph::<T>::fill_with(children, None, *given_arity),
-                Children::Named(_) | Children::None => unreachable!("Mismatch between arity type and children"),
-            },
-            (Arity::Variable, ChildConstraint::Indexed(new_arity)) => match &mut self.children {
-                Children::Unknown => self.children = Children::Indexed(vec![None; new_arity]),
-                Children::Indexed(children) => ConstraintGraph::<T>::fill_with(children, None, new_arity),
-                Children::Named(_) => {
-                    return Err(TcErr::IndexedAccessOnNamedType(this, self.variant.clone(), new_arity));
-                }
-                Children::None => return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity)),
-            },
-            (Arity::FixedNamed(target), ChildConstraint::Named(new)) if !new.is_subset(target) => {
-                return Err(TcErr::FieldDoesNotExist(
-                    this,
-                    self.variant.clone(),
-                    new.difference(target).map(|k| child_names[*k].clone()).collect(),
-                ))
-            }
-            (Arity::FixedNamed(target), ChildConstraint::Named(_)) => match &mut self.children {
-                Children::Unknown => {
-                    self.children = Children::Named(HashMap::from_iter(target.iter().map(|k| (*k, None))))
-                }
-                Children::Named(names) => {
-                    names.extend(target.difference(&names.keys().cloned().collect()).cloned().map(|k| (k, None)))
-                }
-                Children::Indexed(_) | Children::None => unreachable!("Mismatch between arity kind and children"),
-            },
-            (Arity::Variable, ChildConstraint::Named(names)) => match &mut self.children {
-                Children::Unknown => {
-                    self.children = Children::Named(HashMap::from_iter(names.into_iter().map(|k| (k, None))))
-                }
-                Children::Named(children) => {
-                    let current: HashSet<usize> = children.keys().copied().collect();
-                    children.extend(names.difference(&current).cloned().map(|k| (k, None)))
-                }
-                Children::Indexed(_) => {
-                    return Err(TcErr::FieldAccessOnIndexedTyped(
-                        this,
-                        self.variant.clone(),
-                        names.iter().map(|k| child_names[*k].clone()).collect(),
-                    ));
-                }
-                Children::None => {
-                    return Err(TcErr::FieldDoesNotExist(
-                        this,
-                        self.variant.clone(),
-                        names.iter().map(|k| child_names[*k].clone()).collect(),
-                    ))
-                }
-            },
-            (Arity::FixedNamed(_), ChildConstraint::Indexed(idx)) => {
-                return Err(TcErr::IndexedAccessOnNamedType(this, self.variant.clone(), idx));
-            }
-            (Arity::FixedIndexed(_), ChildConstraint::Named(name)) => {
-                return Err(TcErr::FieldAccessOnIndexedTyped(
-                    this,
-                    self.variant.clone(),
-                    name.iter().map(|k| child_names[*k].clone()).collect(),
-                ));
-            }
-            (_, ChildConstraint::Unconstrained) | (_, ChildConstraint::NoChildren) => {
-                //Nothing to do
-            }
-        }
-        Ok(())
+    pub(crate) fn transform_err(key: Key, ty: &T, err: ChildAccessErr) -> TcErr<T> {
+        TcErr::InvalidChildAccessInfered(key, ty.clone(), err.children, err.accessor)
     }
 
-    pub(crate) fn apply_child_constraint_unchecked(&mut self, constraint: ChildConstraint) {
-        match constraint {
-            ChildConstraint::Indexed(idx) => match &mut self.children {
-                Children::Unknown => self.children = Children::Indexed(vec![None; idx]),
-                Children::Indexed(children) => ConstraintGraph::<T>::fill_with(children, None, idx),
-                Children::Named(_) | Children::None => unreachable!("Mismatch between arity type and children"),
-            },
-            ChildConstraint::Named(target) => match &mut self.children {
-                Children::Unknown => {
-                    self.children = Children::Named(HashMap::from_iter(target.iter().map(|k| (*k, None))))
-                }
-                Children::Named(names) => {
-                    names.extend(target.difference(&names.keys().cloned().collect()).cloned().map(|k| (k, None)))
-                }
-                Children::Indexed(_) | Children::None => unreachable!("Mismatch between arity kind and children"),
-            },
-            ChildConstraint::Unconstrained | ChildConstraint::NoChildren => {
-                // Nothing to do
-            }
-        }
+    pub(crate) fn child(&self, this: Key, child: &ChildAccessor) -> Result<Option<Key>, TcErr<T>> {
+        self.children.child(child)
+            .map_err(|err| Self::transform_err(this, &self.ty, err))
     }
 
-    pub(crate) fn child_indexed(&self, idx: usize) -> Option<Key> {
-        debug_assert!(self.children.is_indexed());
-        debug_assert!(self.children.len().unwrap_or(0) > idx);
-        self.children.indexed().unwrap()[idx]
+    pub(crate) fn add_child(&mut self, this: Key, child: &ChildAccessor, child_key: Key) -> Result<ReqsMerge, TcErr<T>> {
+        self.children.add_child(child, child_key)
+            .map_err(|err| Self::transform_err(this, &self.ty, err))
     }
 
-    pub(crate) fn child_named(&self, id: usize) -> Option<Key> {
-        debug_assert!(self.children.is_named());
-        debug_assert!(self.children.named().unwrap().contains_key(&id));
-        self.children.named().unwrap()[&id]
+    pub(crate) fn set_child_indexed(&mut self, this: Key, idx: usize, child_key: Key) -> Result<ReqsMerge, TcErr<T>> {
+        self.add_child(this, &ChildAccessor::Index(idx), child_key)
     }
 
-    pub(crate) fn set_child_indexed(&mut self, n: usize, child: Key) {
-        debug_assert!(self.children.is_indexed());
-        debug_assert!(self.children.len().unwrap_or(0) > n);
-        self.children.indexed_mut().unwrap()[n] = Some(child);
-    }
-
-    pub(crate) fn set_child_named(&mut self, id: usize, child: Key) {
-        debug_assert!(self.children.is_named());
-        debug_assert!(self.children.named().unwrap().contains_key(&id));
-        let _ = self.children.named_mut().unwrap().insert(id, Some(child));
+    pub(crate) fn set_child_named(&mut self, this: Key, field: String, child_key: Key) -> Result<ReqsMerge, TcErr<T>> {
+        self.add_child(this, &ChildAccessor::Field(field), child_key)
     }
 
     pub(crate) fn add_upper_bound(&mut self, bound: Key) {
         let _ = self.upper_bounds.insert(bound);
     }
 
+    fn meet_arity(left: Arity, left_key: Key, right: Arity, right_key: Key) -> Result<Arity, TcErr<T>> {
+        use Arity::*;
+        match (&left, &right) {
+            (Variable, other) 
+            | (other, Variable) => Ok(other.clone()),
+            (None, None) => Ok(None),
+            (None, _) 
+            | (_, None) 
+            | (Fields(_), Indices { .. }) 
+            | (Indices { .. }, Fields(_)) 
+                => Err(TcErr::ArityMismatch { 
+                    key1: left_key, 
+                    arity1: left, 
+                    key2: right_key, 
+                    arity2: right 
+                }),
+            (Fields(left), Fields(right)) 
+                => Ok(Fields(left.union(&right).cloned().collect())),
+            (Indices { greatest: left }, Indices { greatest: right }) 
+                => Ok(Indices { greatest: usize::max(*left, *right) }),
+        }
+    }
+
+    fn combine_children(&self, this: Key, left: &Children, right: &Children) -> Result<(Children, Equates), TcErr<T>> {
+        let mut new_children = Children::empty();
+
+        let all_children = left.to_vec().into_iter()
+            .chain(right.to_vec().into_iter());
+        let required_equates = all_children.map(|(access, child_key)| {
+                new_children.add_potential_child(access, child_key.clone())
+                .map(|merge| merge.zip(*child_key))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| Self::transform_err(this, &self.ty, err))?
+            .drain(..)
+            .flatten()
+            .collect::<Vec<_>>();
+        Ok((new_children, required_equates))
+    }
+
     pub(crate) fn meet(
         &mut self,
         this: Key,
-        target_key: Key,
+        that: Key,
         rhs: &Self,
         ctx: &T::Context,
-        child_ids: &HashMap<String, usize>,
-        child_names: &[String],
-    ) -> Result<EquateObligation, TcErr<T>> {
-        // TODO: Extremely inefficient; improve.
+    ) -> Result<Equates, TcErr<T>> {
         let lhs = self;
-        let mut is_indexed = true;
-        let mut unknown_children = false;
-        let mut no_children = false;
+        
+        let (new_children, mut required_equates) = lhs.combine_children(this, &lhs.children, &rhs.children)?;
 
-        // println!("Meeting: {:?} and {:?}", lhs, rhs);
-
-        match (&lhs.children, &rhs.children) {
-            (Children::Indexed(_), Children::Named(_)) | (Children::Named(_), Children::Indexed(_)) => {
-                return Err(TcErr::ChildKindMismatch(this, lhs.variant.clone(), target_key, rhs.variant.clone()))
-            }
-            (Children::Unknown, Children::Indexed(rhs_c)) => {
-                debug_assert!(rhs.variant.arity(ctx).to_opt().map(|a| a == rhs_c.len()).unwrap_or(true));
-            }
-            (Children::Indexed(lhs_c), Children::Unknown) => {
-                debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == lhs_c.len()).unwrap_or(true));
-            }
-            (Children::Indexed(lhs_c), Children::Indexed(rhs_c)) => {
-                debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == lhs_c.len()).unwrap_or(true));
-                debug_assert!(rhs.variant.arity(ctx).to_opt().map(|a| a == rhs_c.len()).unwrap_or(true));
-            }
-            (Children::Named(children), Children::Unknown) => {
-                is_indexed = false;
-
-                #[cfg(debug_assertions)]
-                {
-                    match lhs.variant.arity(ctx).substitute(child_ids) {
-                        Arity::FixedNamed(lhs_names) => {
-                            debug_assert!(children.keys().copied().collect::<HashSet<_>>() == lhs_names);
-                        }
-                        _ => {
-                            unreachable!("Mismatch between Children and arity")
-                        }
-                    }
-                }
-            }
-            (Children::Unknown, Children::Named(children)) => {
-                is_indexed = false;
-
-                #[cfg(debug_assertions)]
-                {
-                    match rhs.variant.arity(ctx).substitute(child_ids) {
-                        Arity::FixedNamed(rhs_names) => {
-                            debug_assert!(children.keys().copied().collect::<HashSet<_>>() == rhs_names);
-                        }
-                        _ => {
-                            unreachable!("Mismatch between Children and arity")
-                        }
-                    }
-                }
-            }
-            (Children::Named(lhs_c), Children::Named(rhs_c)) => {
-                is_indexed = false;
-
-                #[cfg(debug_assertions)]
-                {
-                    match (lhs.variant.arity(ctx).substitute(child_ids), rhs.variant.arity(ctx).substitute(child_ids)) {
-                        (Arity::FixedNamed(lhs_names), Arity::FixedNamed(rhs_names)) => {
-                            debug_assert!(lhs_c.keys().copied().collect::<HashSet<_>>() == lhs_names);
-                            debug_assert!(rhs_c.keys().copied().collect::<HashSet<_>>() == rhs_names);
-                        }
-                        _ => {
-                            unreachable!("Mismatch between Children and arity")
-                        }
-                    }
-                }
-            }
-            (Children::Unknown, Children::Unknown) => {
-                unknown_children = true;
-            }
-            (Children::Unknown, Children::None)
-            | (Children::None, Children::Unknown)
-            | (Children::None, Children::None) => {
-                no_children = true;
-            }
-            (Children::None, _) | (_, Children::None) => {
-                return Err(TcErr::ChildKindMismatch(this, lhs.variant.clone(), target_key, rhs.variant.clone()))
-            }
+        #[cfg(Debug)]
+        {
+            let new_arity = Self::meet_arity(lhs.ty.arity(ctx), this, rhs.ty.arity(ctx), that)?;
+            let debug_children = new_children.impose(new_arity);
+            assert!(debug_children.is_ok() && debug_children.unwrap() == new_children);
         }
 
-        let left = Infered { variant: lhs.variant.clone(), children: lhs.children.to_constraint() };
-        let right = Infered { variant: rhs.variant.clone(), children: rhs.children.to_constraint() };
-        let Infered { variant: new_variant, children: new_constraint } =
-            ContextType::meet(left, right, ctx).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
+        let new_ty =
+            ContextType::meet(lhs.ty.clone(), rhs.ty.clone(), ctx).map_err(|e| 
+                TcErr::IncompatibleTypes {
+                    key1: this,
+                    ty1: lhs.ty.clone(),
+                    key2: that,
+                    ty2: rhs.ty.clone(),
+                    err: e,
+                })?;
+        
+        let (new_children, mut additional_equates) = lhs.combine_children(this, &new_children, &new_ty.arity(ctx).into())?;
+        required_equates.append(&mut additional_equates);
 
-        let (mut equates, new_children): (OptEquateObligation, Children) = if unknown_children {
-            (vec![], Children::Unknown)
-        } else if no_children {
-            (vec![], Children::None)
-        } else if is_indexed {
-            // Make child arrays same length.
-            ConstraintGraph::<T>::fill_with(
-                lhs.children.indexed_mut().expect("children to be indexed"),
-                None,
-                rhs.children.len().unwrap_or(0),
-            ); // Will be checked later.
-            let (equates, new_children) = lhs
-                .children
-                .indexed()
-                .unwrap_or(&vec![])
-                .iter()
-                .zip(rhs.children.indexed().unwrap_or(&vec![]).iter().chain(std::iter::repeat(&None)))
-                .map(|(a, b)| ((*a).zip(*b), (*a).or(*b)))
-                .unzip();
-            (equates, Children::Indexed(new_children))
-        } else {
-            let empty_map = HashMap::new();
-            let children_l = lhs.children.named().unwrap_or(&empty_map);
-            let children_r = rhs.children.named().unwrap_or(&empty_map);
-            let (equates, new_children) = children_l
-                .keys()
-                .chain(children_r.keys())
-                .map(|k| {
-                    (
-                        children_l.get(k).cloned().flatten().zip(children_r.get(k).cloned().flatten()),
-                        (*k, children_l.get(k).cloned().flatten().or_else(|| children_r.get(k).cloned().flatten())),
-                    )
-                })
-                .unzip();
-            (equates, Children::Named(new_children))
-        };
+        let new_upper_bounds = lhs.upper_bounds.union(&rhs.upper_bounds).cloned().collect();
+        lhs.commit_update(new_ty, new_children, new_upper_bounds);
 
-        let equates: EquateObligation = equates.drain(..).flatten().collect();
-
-        // commit changes
-        lhs.variant = new_variant;
-        lhs.children = new_children;
-        lhs.upper_bounds.extend(rhs.upper_bounds.iter());
-        lhs.apply_child_constraint_checked(target_key, new_constraint, ctx, child_ids, child_names)?;
-
-        // println!("Result: {:?}", lhs);
-
-        debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == lhs.children.len().unwrap_or(0)).unwrap_or(true));
-
-        Ok(equates)
+        Ok(required_equates)
     }
 
-    pub(crate) fn to_infered(&self) -> Infered<T> {
-        Infered { variant: self.variant.clone(), children: self.children.to_constraint() }
+    fn commit_update(&mut self, new_ty: T, new_children: Children, new_upper_bounds: HashSet<Key>){
+        self.ty = new_ty;
+        self.children = new_children;
+        self.upper_bounds = new_upper_bounds;
     }
 
-    pub(crate) fn with_infered(
+    pub(crate) fn with_bound(
         &mut self,
         this: Key,
-        p: Infered<T>,
+        bound: T,
         ctx: &T::Context,
-        child_ids: &HashMap<String, usize>,
-        child_names: &[String],
     ) -> Result<(), TcErr<T>> {
-        let Infered { variant, children: constraint } = p;
-        match variant.arity(ctx).substitute(child_ids) {
-            Arity::Variable => {
-                self.variant = variant;
-                self.apply_child_constraint_unchecked(constraint); // set_arity increases or is no-op.
-                Ok(())
-            }
-            Arity::None => {
-                assert!(matches!(constraint, ChildConstraint::NoChildren));
-                if self.children.len().unwrap_or(0) > 0 {
-                    return Err(TcErr::ArityMismatch {
-                        key: this,
-                        variant,
-                        inferred_arity: self.children.len().unwrap_or(0),
-                        reported_arity: 0,
-                    });
-                }
-                self.variant = variant;
-                // self.apply_child_constraint_unchecked(constraint); // set_arity increases or is no-op.
-                debug_assert!(self
-                    .variant
-                    .arity(ctx)
-                    .to_opt()
-                    .map(|a| a == self.children.len().unwrap_or(0))
-                    .unwrap_or(true));
-                Ok(())
-            }
-            Arity::FixedIndexed(arity) => {
-                assert_eq!(
-                    arity,
-                    constraint.len(),
-                    "meet of two variants yielded fixed-arity variant that did not match least arity."
-                );
-                if self.children.len().unwrap_or(0) > arity {
-                    return Err(TcErr::ArityMismatch {
-                        key: this,
-                        variant,
-                        inferred_arity: self.children.len().unwrap_or(0),
-                        reported_arity: arity,
-                    });
-                }
-                self.variant = variant;
-                self.apply_child_constraint_unchecked(constraint); // set_arity increases or is no-op.
-                debug_assert!(self
-                    .variant
-                    .arity(ctx)
-                    .to_opt()
-                    .map(|a| a == self.children.len().unwrap_or(0))
-                    .unwrap_or(true));
-                Ok(())
-            }
-            Arity::FixedNamed(names) => {
-                assert_eq!(
-                    &names,
-                    constraint.names(),
-                    "meet of two variants yielded fixed-named variant that did not match required named."
-                );
-                let keys = self.children.named().map(|m| m.keys().copied().collect()).unwrap_or_else(HashSet::new);
 
-                if !keys.is_subset(&names) {
-                    return Err(TcErr::FieldMismatch {
-                        key: this,
-                        variant,
-                        inferred_fields: keys.iter().map(|k| child_names[*k].clone()).collect(),
-                        reported_fields: names.iter().map(|k| child_names[*k].clone()).collect(),
-                    });
-                }
-                self.variant = variant;
-                self.apply_child_constraint_unchecked(constraint); // set_arity increases or is no-op.
-                debug_assert!(self
-                    .variant
-                    .arity(ctx)
-                    .to_opt()
-                    .map(|a| a == self.children.len().unwrap_or(0))
-                    .unwrap_or(true));
-                Ok(())
-            }
-        }
+        let new_ty =
+            T::meet(self.ty.clone(), bound.clone(), ctx).map_err(|err| 
+                TcErr::IncompatibleBound { key: this, ty: self.ty.clone(), bound, err }
+            )?;
+
+        let (new_children, equates) = self.combine_children(this, &self.children, &new_ty.arity(ctx).into())?;
+        assert!(equates.is_empty());
+
+        self.children = new_children;
+        self.ty = new_ty;
+
+        Ok(())
     }
 
-    pub(crate) fn to_preliminary(&self) -> Preliminary<T> {
-        Preliminary { ty: self.variant.clone(), children: self.children.clone() }
+    pub(crate) fn into_preliminary(self) -> Preliminary<T> {
+        Preliminary { ty: self.ty, children: self.children }
     }
 }
