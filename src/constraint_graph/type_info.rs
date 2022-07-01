@@ -45,7 +45,7 @@ impl<T: ContextType> TypeInfo<T> {
         let all_children = left.to_vec().into_iter()
             .chain(right.to_vec().into_iter());
         let required_equates = all_children.map(|(access, child_key)| {
-                new_children.add_potential_child(access, child_key.clone())
+                new_children.add_potential_child(access, *child_key)
                 .map(|merge| merge.zip(*child_key))
             })
             .collect::<Result<Vec<_>, _>>()

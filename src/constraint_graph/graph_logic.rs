@@ -88,7 +88,7 @@ impl<T: ContextType> ConstraintGraph<T> {
         &vertices[key.ix]
     }
 
-    pub(crate) fn vertex_mut(vertices: &mut Vec<Vertex<T>>, key: Key) -> &mut Vertex<T> {
+    pub(crate) fn vertex_mut(vertices: &mut [Vertex<T>], key: Key) -> &mut Vertex<T> {
         &mut vertices[key.ix]
     }
 

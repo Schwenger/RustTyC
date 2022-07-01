@@ -44,7 +44,7 @@ impl Children {
     }
 
     pub(crate) fn child(&self, child: &ChildAccessor) -> Result<Option<Key>, ChildAccessErr> {
-        Ok(self._valid_child_access(child)?.get(&child).cloned().flatten())
+        Ok(self._valid_child_access(child)?.get(child).cloned().flatten())
     }
 
     pub(crate) fn all<F>(&self, f: F) -> bool 
@@ -81,17 +81,17 @@ impl Children {
                 return Ok(inner);
             }
         } 
-        return Err(ChildAccessErr{ children: self.clone(), accessor: child.clone() });
+        Err(ChildAccessErr{ children: self.clone(), accessor: child.clone() })
     }
 
     pub(crate) fn add_potential_child(&mut self, child: &ChildAccessor, child_key: Option<Key>) -> Result<ReqsMerge, ChildAccessErr> {
         let inner = self._valid_child_access_mut(child)?;
-        let res = match inner.get(&child).cloned().flatten() {
+        let res = match inner.get(child).cloned().flatten() {
             Some(old) => Ok(ReqsMerge::Yes(old)),
             None => Ok(ReqsMerge::No),
         };
         let _ = inner.insert(child.clone(), child_key);
-        return res;
+        res
     }
 
     pub(crate) fn add_child(&mut self, child: &ChildAccessor, child_key: Key) -> Result<ReqsMerge, ChildAccessErr> {
@@ -193,13 +193,13 @@ impl ChildAccessor {
         matches!(self, Self::Index(_))
     }
     pub fn index(&self) -> Option<usize> {
-        return match self {
+        match self {
             Self::Index(idx) => Some(*idx),
             Self::Field(_) => None,
         }
     }
     pub fn field(&self) -> Option<String> {
-        return match self {
+        match self {
             Self::Index(_) => None,
             Self::Field(field) => Some(field.clone()),
         }
