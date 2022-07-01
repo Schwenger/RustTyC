@@ -7,7 +7,7 @@
 
 use std::fmt::Debug;
 
-use crate::children::Arity;
+use crate::subtys::Arity;
 
 /// A [Variant] which requires a context for meet operations and equality checks.
 ///

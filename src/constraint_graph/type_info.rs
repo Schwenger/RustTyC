@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    children::{ChildAccessErr, ChildAccessor, Children, Equates, ReqsMerge},
+    subtys::{SubTyAccessErr, SubTyAccess, SubTys, Equates, ReqsMerge},
     type_table::Preliminary,
     ContextType, Key, TcErr,
 };
@@ -9,66 +9,66 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypeInfo<T: ContextType> {
     pub(crate) ty: T,
-    pub(crate) children: Children,
+    pub(crate) subtys: SubTys,
     pub(crate) upper_bounds: HashSet<Key>,
 }
 
 impl<T: ContextType> TypeInfo<T> {
     pub(crate) fn top() -> Self {
-        TypeInfo { ty: T::top(), children: Children::top(), upper_bounds: HashSet::new() }
+        TypeInfo { ty: T::top(), subtys: SubTys::top(), upper_bounds: HashSet::new() }
     }
 
     pub(crate) fn equal(this: &Self, that: &Self, ctx: &T::Context) -> bool {
-        T::equal(&this.ty, &that.ty, ctx) && this.children == that.children && this.upper_bounds == that.upper_bounds
+        T::equal(&this.ty, &that.ty, ctx) && this.subtys == that.subtys && this.upper_bounds == that.upper_bounds
     }
 
-    pub(crate) fn transform_err(key: Key, ty: &T, err: ChildAccessErr) -> TcErr<T> {
-        TcErr::InvalidChildAccessInfered(key, ty.clone(), err.children, err.accessor)
+    pub(crate) fn transform_err(key: Key, ty: &T, err: SubTyAccessErr) -> TcErr<T> {
+        TcErr::InvalidSubTyAccessInfered(key, ty.clone(), err.subtys, err.accessor)
     }
 
-    pub(crate) fn child(&self, this: Key, child: &ChildAccessor) -> Result<Option<Key>, TcErr<T>> {
-        self.children.child(child).map_err(|err| Self::transform_err(this, &self.ty, err))
+    pub(crate) fn subty(&self, this: Key, access: &SubTyAccess) -> Result<Option<Key>, TcErr<T>> {
+        self.subtys.subty(access).map_err(|err| Self::transform_err(this, &self.ty, err))
     }
 
-    pub(crate) fn add_child(
+    pub(crate) fn add_subty(
         &mut self,
         this: Key,
-        child: &ChildAccessor,
-        child_key: Key,
+        access: &SubTyAccess,
+        subty_key: Key,
     ) -> Result<ReqsMerge, TcErr<T>> {
-        self.children.add_child(child, child_key).map_err(|err| Self::transform_err(this, &self.ty, err))
+        self.subtys.add_subty(access, subty_key).map_err(|err| Self::transform_err(this, &self.ty, err))
     }
 
     pub(crate) fn add_upper_bound(&mut self, bound: Key) {
         let _ = self.upper_bounds.insert(bound);
     }
 
-    fn combine_children(&self, this: Key, left: &Children, right: &Children) -> Result<(Children, Equates), TcErr<T>> {
-        let mut new_children = Children::empty();
+    fn combine_subtys(&self, this: Key, left: &SubTys, right: &SubTys) -> Result<(SubTys, Equates), TcErr<T>> {
+        let mut new_subtys = SubTys::empty();
 
-        let all_children = left.to_vec().into_iter().chain(right.to_vec().into_iter());
-        let required_equates = all_children
-            .map(|(access, child_key)| {
-                new_children.add_potential_child(access, *child_key).map(|merge| merge.zip(*child_key))
+        let all_subtys = left.to_vec().into_iter().chain(right.to_vec().into_iter());
+        let required_equates = all_subtys
+            .map(|(access, subty_key)| {
+                new_subtys.add_potential_subty(access, *subty_key).map(|merge| merge.zip(*subty_key))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| Self::transform_err(this, &self.ty, err))?
             .drain(..)
             .flatten()
             .collect::<Vec<_>>();
-        Ok((new_children, required_equates))
+        Ok((new_subtys, required_equates))
     }
 
     pub(crate) fn meet(&mut self, this: Key, that: Key, rhs: &Self, ctx: &T::Context) -> Result<Equates, TcErr<T>> {
         let lhs = self;
 
-        let (new_children, mut required_equates) = lhs.combine_children(this, &lhs.children, &rhs.children)?;
+        let (new_subtys, mut required_equates) = lhs.combine_subtys(this, &lhs.subtys, &rhs.subtys)?;
 
         #[cfg(Debug)]
         {
             let new_arity = Self::meet_arity(lhs.ty.arity(ctx), this, rhs.ty.arity(ctx), that)?;
-            let debug_children = new_children.impose(new_arity);
-            assert!(debug_children.is_ok() && debug_children.unwrap() == new_children);
+            let debug_subtys = new_subtys.impose(new_arity);
+            assert!(debug_subtys.is_ok() && debug_subtys.unwrap() == new_subtys);
         }
 
         let new_ty = ContextType::meet(lhs.ty.clone(), rhs.ty.clone(), ctx).map_err(|e| TcErr::IncompatibleTypes {
@@ -79,19 +79,19 @@ impl<T: ContextType> TypeInfo<T> {
             err: e,
         })?;
 
-        let (new_children, mut additional_equates) =
-            lhs.combine_children(this, &new_children, &new_ty.arity(ctx).into())?;
+        let (new_subtys, mut additional_equates) =
+            lhs.combine_subtys(this, &new_subtys, &new_ty.arity(ctx).into())?;
         required_equates.append(&mut additional_equates);
 
         let new_upper_bounds = lhs.upper_bounds.union(&rhs.upper_bounds).cloned().collect();
-        lhs.commit_update(new_ty, new_children, new_upper_bounds);
+        lhs.commit_update(new_ty, new_subtys, new_upper_bounds);
 
         Ok(required_equates)
     }
 
-    fn commit_update(&mut self, new_ty: T, new_children: Children, new_upper_bounds: HashSet<Key>) {
+    fn commit_update(&mut self, new_ty: T, new_subtys: SubTys, new_upper_bounds: HashSet<Key>) {
         self.ty = new_ty;
-        self.children = new_children;
+        self.subtys = new_subtys;
         self.upper_bounds = new_upper_bounds;
     }
 
@@ -103,16 +103,16 @@ impl<T: ContextType> TypeInfo<T> {
             err,
         })?;
 
-        let (new_children, equates) = self.combine_children(this, &self.children, &new_ty.arity(ctx).into())?;
+        let (new_subtys, equates) = self.combine_subtys(this, &self.subtys, &new_ty.arity(ctx).into())?;
         assert!(equates.is_empty());
 
-        self.children = new_children;
+        self.subtys = new_subtys;
         self.ty = new_ty;
 
         Ok(())
     }
 
     pub(crate) fn into_preliminary(self) -> Preliminary<T> {
-        Preliminary { ty: self.ty, children: self.children }
+        Preliminary { ty: self.ty, subtys: self.subtys }
     }
 }

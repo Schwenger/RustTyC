@@ -6,14 +6,14 @@ use crate::Key;
 
 /// Represents the current children of a type.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Children {
+pub enum SubTys {
     /// There are no known children yet.
-    Variable(InferedChildMap),
+    Variable(InferredSubTyMap),
     /// The type doesn't have any children.
     None,
 }
 
-impl Children {
+impl SubTys {
     pub(crate) fn top() -> Self {
         Self::Variable(HashMap::new())
     }
@@ -22,12 +22,12 @@ impl Children {
         Self::Variable(HashMap::new())
     }
 
-    pub(crate) fn all_indexed(&self) -> bool {
-        self.all(ChildAccessor::is_index)
+    pub(crate) fn all_numeric(&self) -> bool {
+        self.all(SubTyAccess::is_numeric)
     }
 
     pub(crate) fn all_field(&self) -> bool {
-        self.all(ChildAccessor::is_field)
+        self.all(SubTyAccess::is_field)
     }
 
     #[allow(unused)]
@@ -39,16 +39,16 @@ impl Children {
     }
 
     pub(crate) fn is_none(&self) -> bool {
-        matches!(self, Children::None)
+        matches!(self, SubTys::None)
     }
 
-    pub(crate) fn child(&self, child: &ChildAccessor) -> Result<Option<Key>, ChildAccessErr> {
-        Ok(self._valid_child_access(child)?.get(child).cloned().flatten())
+    pub(crate) fn subty(&self, access: &SubTyAccess) -> Result<Option<Key>, SubTyAccessErr> {
+        Ok(self._valid_subty_access(access)?.get(access).cloned().flatten())
     }
 
     pub(crate) fn all<F>(&self, f: F) -> bool
     where
-        F: FnMut(&ChildAccessor) -> bool,
+        F: FnMut(&SubTyAccess) -> bool,
     {
         match self {
             Self::None => true,
@@ -56,79 +56,79 @@ impl Children {
         }
     }
 
-    fn _valid_child_access_mut(&mut self, child: &ChildAccessor) -> Result<&mut InferedChildMap, ChildAccessErr> {
+    fn _valid_subty_access_mut(&mut self, access: &SubTyAccess) -> Result<&mut InferredSubTyMap, SubTyAccessErr> {
         let all_field = self.all_field();
-        let all_indexed = self.all_indexed();
-        debug_assert!(all_field || all_indexed);
-        let access_matches = child.is_field() == all_field;
+        let all_numeric = self.all_numeric();
+        debug_assert!(all_field || all_numeric);
+        let access_matches = access.is_field() == all_field;
         if !access_matches || self.is_none() {
-            return Err(ChildAccessErr { children: self.clone(), accessor: child.clone() });
+            return Err(SubTyAccessErr { subtys: self.clone(), accessor: access.clone() });
         }
-        if let Children::Variable(inner) = self {
+        if let SubTys::Variable(inner) = self {
             return Ok(inner);
         }
         unreachable!("Rework this function.")
     }
 
-    fn _valid_child_access(&self, child: &ChildAccessor) -> Result<&InferedChildMap, ChildAccessErr> {
+    fn _valid_subty_access(&self, access: &SubTyAccess) -> Result<&InferredSubTyMap, SubTyAccessErr> {
         let all_field = self.all_field();
-        let all_indexed = self.all_indexed();
-        debug_assert!(all_field || all_indexed);
-        let access_matches = child.is_field() == all_field;
-        if let Children::Variable(inner) = self {
+        let all_numeric = self.all_numeric();
+        debug_assert!(all_field || all_numeric);
+        let access_matches = access.is_field() == all_field;
+        if let SubTys::Variable(inner) = self {
             if access_matches {
                 return Ok(inner);
             }
         }
-        Err(ChildAccessErr { children: self.clone(), accessor: child.clone() })
+        Err(SubTyAccessErr { subtys: self.clone(), accessor: access.clone() })
     }
 
-    pub(crate) fn add_potential_child(
+    pub(crate) fn add_potential_subty(
         &mut self,
-        child: &ChildAccessor,
-        child_key: Option<Key>,
-    ) -> Result<ReqsMerge, ChildAccessErr> {
-        let inner = self._valid_child_access_mut(child)?;
-        let res = match inner.get(child).cloned().flatten() {
+        access: &SubTyAccess,
+        subty_key: Option<Key>,
+    ) -> Result<ReqsMerge, SubTyAccessErr> {
+        let inner = self._valid_subty_access_mut(access)?;
+        let res = match inner.get(access).cloned().flatten() {
             Some(old) => Ok(ReqsMerge::Yes(old)),
             None => Ok(ReqsMerge::No),
         };
-        let _ = inner.insert(child.clone(), child_key);
+        let _ = inner.insert(access.clone(), subty_key);
         res
     }
 
-    pub(crate) fn add_child(&mut self, child: &ChildAccessor, child_key: Key) -> Result<ReqsMerge, ChildAccessErr> {
-        self.add_potential_child(child, Some(child_key))
+    pub(crate) fn add_subty(&mut self, access: &SubTyAccess, subty_key: Key) -> Result<ReqsMerge, SubTyAccessErr> {
+        self.add_potential_subty(access, Some(subty_key))
     }
 
-    pub(crate) fn to_vec(&self) -> Vec<(&ChildAccessor, &Option<Key>)> {
+    pub(crate) fn to_vec(&self) -> Vec<(&SubTyAccess, &Option<Key>)> {
         match self {
-            Children::None => vec![],
-            Children::Variable(inner) => inner.iter().collect(),
+            SubTys::None => vec![],
+            SubTys::Variable(inner) => inner.iter().collect(),
         }
     }
 
     pub(crate) fn from_arity(arity: Arity) -> Self {
         match arity {
-            Arity::None => Children::None,
-            Arity::Variable => Children::Variable(HashMap::new()),
+            Arity::None => SubTys::None,
+            Arity::Variable => SubTys::Variable(HashMap::new()),
             Arity::Fields(fields) => {
-                Children::Variable(fields.into_iter().map(ChildAccessor::Field).map(|acc| (acc, None)).collect())
+                SubTys::Variable(fields.into_iter().map(SubTyAccess::Field).map(|acc| (acc, None)).collect())
             }
-            Arity::Indices { greatest } => Children::Variable(
-                (0..=greatest).into_iter().map(ChildAccessor::Index).map(|acc| (acc, None)).collect(),
+            Arity::Numeric { greatest } => SubTys::Variable(
+                (0..=greatest).into_iter().map(SubTyAccess::Numeric).map(|acc| (acc, None)).collect(),
             ),
         }
     }
 }
 
-impl From<Arity> for Children {
+impl From<Arity> for SubTys {
     fn from(arity: Arity) -> Self {
         Self::from_arity(arity)
     }
 }
 
-pub(crate) type InferedChildMap = HashMap<ChildAccessor, Option<Key>>;
+pub(crate) type InferredSubTyMap = HashMap<SubTyAccess, Option<Key>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ReqsMerge {
@@ -153,9 +153,9 @@ pub(crate) type Equates = Vec<Equate>;
 pub(crate) type Equate = (Key, Key);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChildAccessErr {
-    pub(crate) children: Children,
-    pub(crate) accessor: ChildAccessor,
+pub(crate) struct SubTyAccessErr {
+    pub(crate) subtys: SubTys,
+    pub(crate) accessor: SubTyAccess,
 }
 
 // /// Represents the arity of a [Variant] or [ContextSensitiveVariant].
@@ -172,33 +172,33 @@ pub enum Arity {
     Variable,
     /// The arity is fixed and the children are accessed by name.
     Fields(HashSet<String>),
-    Indices {
+    Numeric {
         greatest: usize,
     },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum ChildAccessor {
-    Index(usize),
-    Field(String), // TODO!
+pub enum SubTyAccess {
+    Numeric(usize),
+    Field(String), // todo
 }
 
-impl ChildAccessor {
+impl SubTyAccess {
     pub fn is_field(&self) -> bool {
         matches!(self, Self::Field(_))
     }
-    pub fn is_index(&self) -> bool {
-        matches!(self, Self::Index(_))
+    pub fn is_numeric(&self) -> bool {
+        matches!(self, Self::Numeric(_))
     }
-    pub fn index(&self) -> Option<usize> {
+    pub fn numeric(&self) -> Option<usize> {
         match self {
-            Self::Index(idx) => Some(*idx),
+            Self::Numeric(idx) => Some(*idx),
             Self::Field(_) => None,
         }
     }
     pub fn field(&self) -> Option<String> {
         match self {
-            Self::Index(_) => None,
+            Self::Numeric(_) => None,
             Self::Field(field) => Some(field.clone()),
         }
     }
@@ -206,7 +206,7 @@ impl ChildAccessor {
 
 impl Arity {
     pub fn for_tuple(of_size: usize) -> Self {
-        Arity::Indices { greatest: of_size }
+        Arity::Numeric { greatest: of_size }
     }
 
     pub fn for_struct(with_fields: HashSet<String>) -> Self {

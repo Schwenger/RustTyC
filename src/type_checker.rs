@@ -1,4 +1,4 @@
-use crate::children::{Arity, ChildAccessor, Children};
+use crate::subtys::{Arity, SubTyAccess, SubTys};
 use crate::constraint_graph::ConstraintGraph;
 use crate::keys::{Constraint, Key};
 use crate::type_table::{Constructable, Preliminary, PreliminaryTypeTable, TypeTable};
@@ -106,9 +106,9 @@ impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `nth` results in the same key.
-    pub fn get_indexed_child_key(&mut self, parent: Key, nth: usize) -> Result<Key, TcErr<T>> {
+    pub fn get_numeric_subty_key(&mut self, parent: Key, nth: usize) -> Result<Key, TcErr<T>> {
         let TypeChecker { graph, variables: _, .. } = self;
-        graph.impose_child(parent, ChildAccessor::Index(nth))
+        graph.impose_subty(parent, SubTyAccess::Numeric(nth))
     }
 
     /// Provides a key to the child with name `name` of the type behind `parent`.
@@ -116,10 +116,10 @@ impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `name` results in the same key.
-    pub fn get_child_key(&mut self, parent: Key, child: ChildAccessor) -> Result<Key, TcErr<T>> {
+    pub fn get_subty_key(&mut self, parent: Key, access: SubTyAccess) -> Result<Key, TcErr<T>> {
         let TypeChecker { graph, variables: _, context: _ } = self;
 
-        let key = graph.impose_child(parent, child)?;
+        let key = graph.impose_subty(parent, access)?;
         Ok(key)
     }
 
@@ -142,25 +142,25 @@ impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     }
 
     /// Lifts a collection of keys as indexed children into a certain recursive variant.
-    pub fn lift_into_partial_indexed(&mut self, ty: T, mut sub_types: Vec<Option<Key>>) -> Key {
+    pub fn lift_into_partial_numeric(&mut self, ty: T, mut sub_types: Vec<Option<Key>>) -> Key {
         let sub_types: HashMap<_, _> =
-            sub_types.drain(..).enumerate().map(|(idx, sub)| (ChildAccessor::Index(idx), sub)).collect();
+            sub_types.drain(..).enumerate().map(|(idx, sub)| (SubTyAccess::Numeric(idx), sub)).collect();
         self.lift_into_partial(ty, sub_types)
     }
 
     /// Lifts a collection of keys as indexed children into a certain recursive variant.
-    pub fn lift_into_indexed(&mut self, ty: T, mut sub_types: Vec<Key>) -> Key {
-        self.lift_into_partial_indexed(ty, sub_types.drain(..).map(Some).collect())
+    pub fn lift_into_numeric(&mut self, ty: T, mut sub_types: Vec<Key>) -> Key {
+        self.lift_into_partial_numeric(ty, sub_types.drain(..).map(Some).collect())
     }
 
     /// Lifts a collection of keys as indexed children into a certain recursive variant.
-    pub fn lift_into(&mut self, ty: T, mut sub_types: HashMap<ChildAccessor, Key>) -> Key {
+    pub fn lift_into(&mut self, ty: T, mut sub_types: HashMap<SubTyAccess, Key>) -> Key {
         self.lift_into_partial(ty, sub_types.drain().map(|(k, v)| (k, Some(v))).collect())
     }
 
     /// Lifts a collection of keys as indexed children into a certain recursive variant.
-    pub fn lift_into_partial(&mut self, ty: T, sub_types: HashMap<ChildAccessor, Option<Key>>) -> Key {
-        self.graph.lift(ty, Children::Variable(sub_types))
+    pub fn lift_into_partial(&mut self, ty: T, sub_types: HashMap<SubTyAccess, Option<Key>>) -> Key {
+        self.graph.lift(ty, SubTys::Variable(sub_types))
     }
 
     /// Returns an iterator over all keys currently present in the type checking procedure.
@@ -212,8 +212,8 @@ where
 /// Represents an error during the type check procedure.
 #[derive(Debug, Clone)]
 pub enum TcErr<T: ContextType> {
-    InvalidChildAccessInfered(Key, T, Children, ChildAccessor),
-    InvalidChildAccessForArity(Key, T, ChildAccessor),
+    InvalidSubTyAccessInfered(Key, T, SubTys, SubTyAccess),
+    InvalidSubTyAccessForArity(Key, T, SubTyAccess),
     IncompatibleTypes {
         key1: Key,
         ty1: T,
@@ -236,70 +236,6 @@ pub enum TcErr<T: ContextType> {
     /// An error reporting a failed type construction.  Contains the affected key, the preliminary result for which the construction failed, and the
     /// error reported by the construction.
     Construction(Key, Preliminary<T>, T::Err),
-
-    /// Two keys were attempted to be equated and their underlying types turned out to be incompatible.
-    /// Contains the two keys and the error that occurred when attempting to meet their [ContextSensitiveVariant] types.
-    // KeyEquation(Key, Key, T::Err),
-
-    // Cannot be met
-    // IncompatibleTypes(Key, Key, T::Err),
-
-    /// This error occurs when a constraint imposes the existing of children with the given names of a type and its variant turns out to
-    /// not know these children.
-    /// Contains the affected key, its inferred or explicitly assigned variant, and the names of the children that
-    /// do not exist for the variant.
-    // FieldDoesNotExist(Key, T, ChildAccessor),
-
-    /// Attempted an named access to a child on a type that has indexed children.
-    /// Contains the affected key, its inferred or explicitly assigned variant, and the name of the child that
-    /// was attempted to be accessed.
-    // FieldAccessOnIndexedTyped(Key, T, String),
-
-    /// Attempted an indexed access to a child on a type that has named children.
-    /// Contains the affected key, its inferred or explicitly assigned variant, and the index of the child that
-    /// was attempted to be accessed.
-    // IndexedAccessOnStructType(Key, T, usize),
-
-    /// This error occurs if the type checker inferred a specific arity but the variant reports a fixed arity that is lower than the inferred one.
-    // ArityMismatch {
-    //     left_key: Key,
-    //     left_arity: Arity,
-    //     right_key: Key,
-    //     right_arity: Arity,
-    // },
-
-    /// This error occurs if the type checker inferred a specific set of fields but the variant reports a fixed set of fields that is different than the inferred one.
-    // FieldMismatch {
-    //     /// The key for which the mismatch was detected.
-    //     key: Key,
-    //     /// The variant with fixed arity.
-    //     ty: T,
-    //     /// The least required fields according to the type check procedure.
-    //     inferred_fields: HashSet<String>,
-    //     /// The fields required according to the meet operation that created the variant.
-    //     reported_fields: HashSet<String>,
-    // },
-
-    /// The access kind of the types children did not match during a meet.
-    /// I.e. The type checker tried to meet a variant with named children with one with indexed children.
-    // ChildKindMismatch(Key, T, Key, T),
-
-    /// An error reporting a failed type construction.  Contains the affected key, the preliminary result for which the construction failed, and the
-    /// error reported by the construction.
-    // Construction(Key, Preliminary<T>, T::Err),
-
-    /// This error indicates that a variant requires indexed children, for one of which the construction failed.
-    /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
-    /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
-    /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
-    /// reported by the construction of the child.
-    // IndexedChildConstruction(Key, usize, Preliminary<T>, T::Err),
-
-    /// This error indicates that a variant requires named children, for one of which the construction failed.
-    /// Note that this can occur seemingly-spuriously, e.g., if a child needs to be present but there were no restrictions on said child.
-    /// In this case, the construction attempts and might fail to construct a child out of a [ContextSensitiveVariant::top()].
-    /// The error contains the affected key, the name of the child, the preliminary result of which a child construction failed, and the error
-    // NamedChildConstruction(Key, String, Preliminary<T>, T::Err),
 
     /// This error reports cyclic non-equality dependencies in the constraint graph.
     /// Example: Key 1 is more concrete than Key 2, which is more concrete than Key 3, which is more concrete than Key 1.

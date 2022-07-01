@@ -1,4 +1,4 @@
-use crate::{children::Equates, ContextType, Key, TcErr};
+use crate::{subtys::Equates, ContextType, Key, TcErr};
 
 use super::{graph_logic::Vertex, type_info::TypeInfo, ConstraintGraph};
 

@@ -1,4 +1,4 @@
-use crate::children::{ChildAccessor, Children, ReqsMerge};
+use crate::subtys::{SubTyAccess, SubTys, ReqsMerge};
 use crate::type_table::{Constructable, PreliminaryTypeTable, TypeTable};
 use crate::{types::ContextType, Key, TcErr};
 
@@ -31,10 +31,10 @@ impl<T: ContextType> ConstraintGraph<T> {
         self.new_vertex().this()
     }
 
-    pub(crate) fn lift(&mut self, variant: T, children: Children) -> Key {
+    pub(crate) fn lift(&mut self, variant: T, subtys: SubTys) -> Key {
         let v = self.new_vertex().mut_full();
         v.ty.ty = variant;
-        v.ty.children = children;
+        v.ty.subtys = subtys;
         v.this
     }
 
@@ -42,18 +42,18 @@ impl<T: ContextType> ConstraintGraph<T> {
     /// the key is returned without calling the `keygen` function.  Otherwise, `keygen` generates a new key which will be added to the graph regularly,
     /// associated with the child, and returned.
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
-    pub(crate) fn impose_child(&mut self, parent: Key, child: ChildAccessor) -> Result<Key, TcErr<T>> {
+    pub(crate) fn impose_subty(&mut self, parent: Key, access: SubTyAccess) -> Result<Key, TcErr<T>> {
         {
             let parent_v = Self::repr_mut(&mut self.vertices, parent);
-            if let Some(child_key) = parent_v.ty.child(parent, &child)? {
-                return Ok(child_key);
+            if let Some(subty_key) = parent_v.ty.subty(parent, &access)? {
+                return Ok(subty_key);
             }
         }
-        let child_key = self.create_vertex();
+        let subty_key = self.create_vertex();
         let parent_v = Self::repr_mut(&mut self.vertices, parent);
-        let merge = parent_v.ty.add_child(parent, &child, child_key)?;
+        let merge = parent_v.ty.add_subty(parent, &access, subty_key)?;
         assert!(merge == ReqsMerge::No);
-        Ok(child_key)
+        Ok(subty_key)
     }
 
     /// Declares an asymmetric relation between two keys.

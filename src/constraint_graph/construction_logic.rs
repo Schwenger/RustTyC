@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::types::UpperBoundedType;
 use crate::{
-    type_table::{Constructable, Preliminary, PreliminaryTypeTable, ResolvedChildren, TypeTable},
+    type_table::{Constructable, Preliminary, PreliminaryTypeTable, ResolvedSubTys, TypeTable},
     Key, TcErr,
 };
 
@@ -38,50 +38,50 @@ where
             let mut still_open = Vec::with_capacity(open.len());
             let num_open = open.len();
             for v in open {
-                let children = v.ty.children.clone();
-                if children.is_none() {
+                let subtys = v.ty.subtys.clone();
+                if subtys.is_none() {
                     let ty =
                         v.ty.ty
-                            .construct(ResolvedChildren::None)
+                            .construct(ResolvedSubTys::None)
                             .map_err(|e| TcErr::Construction(v.this, v.ty.clone().into_preliminary(), e))?;
                     let _ = resolved.insert(v.this, ty);
                 } else {
-                    let mut resolved_children = Vec::new();
-                    for (_child, key) in children.to_vec() {
+                    let mut resolved_subtys = Vec::new();
+                    for (_subty, key) in subtys.to_vec() {
                         let constructed = if let Some(key) = key {
                             resolved.get(&self.repr(*key).this).cloned()
                         } else {
                             Some(Self::unresolved_type())
                         };
-                        resolved_children.push(constructed);
+                        resolved_subtys.push(constructed);
                     }
-                    if resolved_children.iter().all(Option::is_some) {
-                        let children = if children.all_field() {
-                            debug_assert_eq!(resolved_children.iter().flatten().count(), children.to_vec().len());
-                            let children_map = children
+                    if resolved_subtys.iter().all(Option::is_some) {
+                        let subtys = if subtys.all_field() {
+                            debug_assert_eq!(resolved_subtys.iter().flatten().count(), subtys.to_vec().len());
+                            let subtys_map = subtys
                                 .to_vec()
                                 .into_iter()
-                                .map(|(child, _)| child.field().unwrap())
-                                .zip(resolved_children.into_iter().flatten())
+                                .map(|(access, _)| access.field().unwrap())
+                                .zip(resolved_subtys.into_iter().flatten())
                                 .collect::<HashMap<_, _>>();
-                            debug_assert_eq!(children_map.len(), children.to_vec().len());
-                            ResolvedChildren::Named(children_map)
+                            debug_assert_eq!(subtys_map.len(), subtys.to_vec().len());
+                            ResolvedSubTys::Fields(subtys_map)
                         } else {
-                            debug_assert_eq!(resolved_children.iter().flatten().count(), children.to_vec().len());
-                            let mut children_map = children
+                            debug_assert_eq!(resolved_subtys.iter().flatten().count(), subtys.to_vec().len());
+                            let mut subtys_map = subtys
                                 .to_vec()
                                 .into_iter()
-                                .map(|(child, _)| child.index().unwrap())
-                                .zip(resolved_children.into_iter().flatten())
+                                .map(|(access, _)| access.numeric().unwrap())
+                                .zip(resolved_subtys.into_iter().flatten())
                                 .collect::<Vec<_>>();
-                            children_map.sort_by_key(|(idx, _ty)| *idx);
-                            let children_map = children_map.into_iter().map(|(_, ty)| ty).collect::<Vec<_>>();
-                            debug_assert_eq!(children_map.len(), children.to_vec().len());
-                            ResolvedChildren::Indexed(children_map)
+                            subtys_map.sort_by_key(|(idx, _ty)| *idx);
+                            let subtys_map = subtys_map.into_iter().map(|(_, ty)| ty).collect::<Vec<_>>();
+                            debug_assert_eq!(subtys_map.len(), subtys.to_vec().len());
+                            ResolvedSubTys::Numeric(subtys_map)
                         };
                         let ty =
                             v.ty.ty
-                                .construct(children)
+                                .construct(subtys)
                                 .map_err(|e| TcErr::Construction(v.this, v.ty.clone().into_preliminary(), e))?;
                         let _ = resolved.insert(v.this, ty);
                     } else {

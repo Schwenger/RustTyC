@@ -550,14 +550,14 @@ fn test_mixed_access() {
 
     tc.impose(key_a.concretizes_explicit(a_type.clone())).unwrap();
     let _ = tc.get_named_child_key(key_a, "Hello").unwrap();
-    let _ = tc.get_indexed_child_key(key_a, 1).expect_err("expected type error");
+    let _ = tc.get_numeric_subty_key(key_a, 1).expect_err("expected type error");
 
     tc.impose(key_b.concretizes_explicit(b_type)).unwrap();
-    let _ = tc.get_indexed_child_key(key_b, 1).unwrap();
+    let _ = tc.get_numeric_subty_key(key_b, 1).unwrap();
     let _ = tc.get_named_child_key(key_b, "World").expect_err("expected type error");
 
     let _ = tc.get_named_child_key(key_c, "Test").unwrap();
-    let _ = tc.get_indexed_child_key(key_c, 1).expect_err("expected type error");
+    let _ = tc.get_numeric_subty_key(key_c, 1).expect_err("expected type error");
 }
 
 #[test]

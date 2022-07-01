@@ -93,7 +93,7 @@
     unused_results
 )]
 
-mod children;
+mod subtys;
 pub(crate) mod constraint_graph;
 mod keys;
 #[cfg(test)]
