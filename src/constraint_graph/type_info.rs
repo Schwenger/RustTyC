@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    subtys::{SubTyAccessErr, SubTyAccess, SubTys, Equates, ReqsMerge},
+    subtys::{Equates, ReqsMerge, SubTyAccess, SubTyAccessErr, SubTys},
     type_table::Preliminary,
     ContextType, Key, TcErr,
 };
@@ -9,7 +9,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypeInfo<T: ContextType> {
     pub(crate) ty: T,
-    pub(crate) subtys: SubTys,
+    pub(crate) subtys: SubTys<T::SubTyId>,
     pub(crate) upper_bounds: HashSet<Key>,
 }
 
@@ -22,18 +22,18 @@ impl<T: ContextType> TypeInfo<T> {
         T::equal(&this.ty, &that.ty, ctx) && this.subtys == that.subtys && this.upper_bounds == that.upper_bounds
     }
 
-    pub(crate) fn transform_err(key: Key, ty: &T, err: SubTyAccessErr) -> TcErr<T> {
+    pub(crate) fn transform_err(key: Key, ty: &T, err: SubTyAccessErr<T::SubTyId>) -> TcErr<T> {
         TcErr::InvalidSubTyAccessInfered(key, ty.clone(), err.subtys, err.accessor)
     }
 
-    pub(crate) fn subty(&self, this: Key, access: &SubTyAccess) -> Result<Option<Key>, TcErr<T>> {
+    pub(crate) fn subty(&self, this: Key, access: SubTyAccess<T::SubTyId>) -> Result<Option<Key>, TcErr<T>> {
         self.subtys.subty(access).map_err(|err| Self::transform_err(this, &self.ty, err))
     }
 
     pub(crate) fn add_subty(
         &mut self,
         this: Key,
-        access: &SubTyAccess,
+        access: SubTyAccess<T::SubTyId>,
         subty_key: Key,
     ) -> Result<ReqsMerge, TcErr<T>> {
         self.subtys.add_subty(access, subty_key).map_err(|err| Self::transform_err(this, &self.ty, err))
@@ -43,13 +43,18 @@ impl<T: ContextType> TypeInfo<T> {
         let _ = self.upper_bounds.insert(bound);
     }
 
-    fn combine_subtys(&self, this: Key, left: &SubTys, right: &SubTys) -> Result<(SubTys, Equates), TcErr<T>> {
+    fn combine_subtys(
+        &self,
+        this: Key,
+        left: &SubTys<T::SubTyId>,
+        right: &SubTys<T::SubTyId>,
+    ) -> Result<(SubTys<T::SubTyId>, Equates), TcErr<T>> {
         let mut new_subtys = SubTys::empty();
 
         let all_subtys = left.to_vec().into_iter().chain(right.to_vec().into_iter());
         let required_equates = all_subtys
             .map(|(access, subty_key)| {
-                new_subtys.add_potential_subty(access, *subty_key).map(|merge| merge.zip(*subty_key))
+                new_subtys.add_potential_subty(*access, *subty_key).map(|merge| merge.zip(*subty_key))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| Self::transform_err(this, &self.ty, err))?
@@ -79,8 +84,7 @@ impl<T: ContextType> TypeInfo<T> {
             err: e,
         })?;
 
-        let (new_subtys, mut additional_equates) =
-            lhs.combine_subtys(this, &new_subtys, &new_ty.arity(ctx).into())?;
+        let (new_subtys, mut additional_equates) = lhs.combine_subtys(this, &new_subtys, &new_ty.arity(ctx).into())?;
         required_equates.append(&mut additional_equates);
 
         let new_upper_bounds = lhs.upper_bounds.union(&rhs.upper_bounds).cloned().collect();
@@ -89,7 +93,7 @@ impl<T: ContextType> TypeInfo<T> {
         Ok(required_equates)
     }
 
-    fn commit_update(&mut self, new_ty: T, new_subtys: SubTys, new_upper_bounds: HashSet<Key>) {
+    fn commit_update(&mut self, new_ty: T, new_subtys: SubTys<T::SubTyId>, new_upper_bounds: HashSet<Key>) {
         self.ty = new_ty;
         self.subtys = new_subtys;
         self.upper_bounds = new_upper_bounds;

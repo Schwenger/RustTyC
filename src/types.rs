@@ -8,6 +8,9 @@
 use std::fmt::Debug;
 
 use crate::subtys::Arity;
+use std::hash::Hash;
+
+pub trait SubTyId: Debug + Copy + Hash + Eq {}
 
 /// A [Variant] which requires a context for meet operations and equality checks.
 ///
@@ -22,6 +25,8 @@ pub trait ContextType: Sized + Clone + Debug + UpperBoundedType {
     /// Represents the meet- and equality context.
     type Context: Debug;
 
+    type SubTyId: SubTyId;
+
     /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
     /// Refer to [Variant] for the responsibilities of this function.
     /// In particular: `usize::max(lhs.children, rhs.children) <= result.children` in the indexed case and
@@ -35,7 +40,7 @@ pub trait ContextType: Sized + Clone + Debug + UpperBoundedType {
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
     /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
     /// the tuple has a variable arity and potentially a different variant.
-    fn arity(&self, ctx: &Self::Context) -> Arity;
+    fn arity(&self, ctx: &Self::Context) -> Arity<Self::SubTyId>;
 
     /// Context-sensitive version of [Eq].  All rules apply.
     fn equal(this: &Self, that: &Self, ctx: &Self::Context) -> bool;
@@ -88,6 +93,8 @@ pub trait Type: Sized + Clone + Debug + Eq + UpperBoundedType {
     /// May contain information regarding why the meet failed.  The error will be wrapped into a [crate::TcErr] providing contextual information.
     type Err: Debug;
 
+    type SubTyId: SubTyId;
+
     /// Attempts to meet two variants respecting their currently-determined potentially variable arity.
     /// Refer to [Variant] for the responsibilities of this function.
     /// In particular: `usize::max(lhs.children, rhs.children) <= result.children` in the indexed case and
@@ -101,7 +108,7 @@ pub trait Type: Sized + Clone + Debug + Eq + UpperBoundedType {
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
     /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
     /// the tuple has a variable arity and potentially a different variant.
-    fn arity(&self) -> Arity;
+    fn arity(&self) -> Arity<Self::SubTyId>;
 }
 
 impl<T: Type> ContextType for T {
@@ -109,11 +116,13 @@ impl<T: Type> ContextType for T {
 
     type Context = ();
 
+    type SubTyId = T::SubTyId;
+
     fn meet(lhs: Self, rhs: Self, _ctx: &Self::Context) -> Result<Self, Self::Err> {
         T::meet(lhs, rhs)
     }
 
-    fn arity(&self, _ctx: &Self::Context) -> Arity {
+    fn arity(&self, _ctx: &Self::Context) -> Arity<Self::SubTyId> {
         self.arity()
     }
 
@@ -127,9 +136,9 @@ impl<T: Type> ContextType for T {
 /// The `children` represent the current knowledge of the type checker about the children of the type.
 /// See [ChildConstraint] for further information.
 #[derive(Debug, Clone)]
-pub struct Infered<T: Sized> {
+pub struct Infered<T: ContextType> {
     /// The variant represented by this `Partial`.
     pub ty: T,
     /// The least requirement for children.
-    pub arity: Arity,
+    pub arity: Arity<T::SubTyId>,
 }

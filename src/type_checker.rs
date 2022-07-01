@@ -1,6 +1,6 @@
-use crate::subtys::{Arity, SubTyAccess, SubTys};
 use crate::constraint_graph::ConstraintGraph;
 use crate::keys::{Constraint, Key};
+use crate::subtys::{Arity, SubTyAccess, SubTys};
 use crate::type_table::{Constructable, Preliminary, PreliminaryTypeTable, TypeTable};
 use crate::types::ContextType;
 use crate::Type;
@@ -116,7 +116,7 @@ impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     /// If this imposition immediately leads to a contradiction, a [TcErr] is returned.
     /// Contradictions due to this constraint may only occur later when resolving further constraints.
     /// Calling this function several times on a parent with the same `name` results in the same key.
-    pub fn get_subty_key(&mut self, parent: Key, access: SubTyAccess) -> Result<Key, TcErr<T>> {
+    pub fn get_subty_key(&mut self, parent: Key, access: SubTyAccess<T::SubTyId>) -> Result<Key, TcErr<T>> {
         let TypeChecker { graph, variables: _, context: _ } = self;
 
         let key = graph.impose_subty(parent, access)?;
@@ -154,12 +154,12 @@ impl<T: ContextType, Var: VarId> TypeChecker<T, Var> {
     }
 
     /// Lifts a collection of keys as indexed children into a certain recursive variant.
-    pub fn lift_into(&mut self, ty: T, mut sub_types: HashMap<SubTyAccess, Key>) -> Key {
+    pub fn lift_into(&mut self, ty: T, mut sub_types: HashMap<SubTyAccess<T::SubTyId>, Key>) -> Key {
         self.lift_into_partial(ty, sub_types.drain().map(|(k, v)| (k, Some(v))).collect())
     }
 
     /// Lifts a collection of keys as indexed children into a certain recursive variant.
-    pub fn lift_into_partial(&mut self, ty: T, sub_types: HashMap<SubTyAccess, Option<Key>>) -> Key {
+    pub fn lift_into_partial(&mut self, ty: T, sub_types: HashMap<SubTyAccess<T::SubTyId>, Option<Key>>) -> Key {
         self.graph.lift(ty, SubTys::Variable(sub_types))
     }
 
@@ -212,8 +212,8 @@ where
 /// Represents an error during the type check procedure.
 #[derive(Debug, Clone)]
 pub enum TcErr<T: ContextType> {
-    InvalidSubTyAccessInfered(Key, T, SubTys, SubTyAccess),
-    InvalidSubTyAccessForArity(Key, T, SubTyAccess),
+    InvalidSubTyAccessInfered(Key, T, SubTys<T::SubTyId>, SubTyAccess<T::SubTyId>),
+    InvalidSubTyAccessForArity(Key, T, SubTyAccess<T::SubTyId>),
     IncompatibleTypes {
         key1: Key,
         ty1: T,
@@ -229,9 +229,9 @@ pub enum TcErr<T: ContextType> {
     },
     ArityMismatch {
         key1: Key,
-        arity1: Arity,
+        arity1: Arity<T::SubTyId>,
         key2: Key,
-        arity2: Arity,
+        arity2: Arity<T::SubTyId>,
     },
     /// An error reporting a failed type construction.  Contains the affected key, the preliminary result for which the construction failed, and the
     /// error reported by the construction.

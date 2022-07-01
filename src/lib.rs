@@ -93,9 +93,9 @@
     unused_results
 )]
 
-mod subtys;
 pub(crate) mod constraint_graph;
 mod keys;
+mod subtys;
 #[cfg(test)]
 mod tests;
 mod type_checker;
@@ -104,4 +104,4 @@ pub mod types;
 
 pub use keys::Key;
 pub use type_checker::{TcErr, TypeChecker, VarId, VarlessTypeChecker};
-pub use types::{ContextType, Infered, Type};
+pub use types::{ContextType, Infered, SubTyId, Type};
