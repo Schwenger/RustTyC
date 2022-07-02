@@ -1,6 +1,6 @@
 use crate::{ContextType, Key, TcErr};
 
-use super::{type_info::TypeInfo, ConstraintGraph};
+use super::{type_info::Inferred, ConstraintGraph};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Vertex<T: ContextType> {
@@ -47,14 +47,14 @@ impl<T: ContextType> Vertex<T> {
     }
     /// Creates a full vertex without information regarding its children.
     pub(crate) fn new_niladic(this: Key) -> Vertex<T> {
-        Vertex::Repr(FullVertex { this, ty: TypeInfo::top() })
+        Vertex::Repr(FullVertex { this, ty: Inferred::top() })
     }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct FullVertex<T: ContextType> {
     pub(crate) this: Key,
-    pub(crate) ty: TypeInfo<T>,
+    pub(crate) ty: Inferred<T>,
 }
 
 impl<T: ContextType> ConstraintGraph<T> {

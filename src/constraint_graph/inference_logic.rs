@@ -1,6 +1,6 @@
 use crate::{subtys::Equates, ContextType, Key, TcErr};
 
-use super::{graph_logic::Vertex, type_info::TypeInfo, ConstraintGraph};
+use super::{graph_logic::Vertex, type_info::Inferred, ConstraintGraph};
 
 impl<T: ContextType> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  
@@ -26,7 +26,7 @@ impl<T: ContextType> ConstraintGraph<T> {
             .into_iter()
             .map(|key| {
                 let vertex = self.repr(key);
-                let initial: (TypeInfo<T>, Equates) = (vertex.ty.clone(), Vec::new());
+                let initial: (Inferred<T>, Equates) = (vertex.ty.clone(), Vec::new());
                 let (new_type, equates) =
                     vertex.ty.upper_bounds.iter().map(|b| (&self.repr(*b).ty, *b)).fold(Ok(initial), |lhs, rhs| {
                         let (mut old_ty, mut equates) = lhs?;
@@ -39,7 +39,7 @@ impl<T: ContextType> ConstraintGraph<T> {
                         // Meet-Alternative: Ok((new_ty, equates))
                         Ok((old_ty, equates))
                     })?;
-                let change = !TypeInfo::equal(&vertex.ty, &new_type, context);
+                let change = !Inferred::equal(&vertex.ty, &new_type, context);
                 Self::repr_mut(&mut self.vertices, key).ty = new_type;
                 equates.into_iter().try_for_each(|(k1, k2)| self.equate(k1, k2, context))?;
                 Ok(change)

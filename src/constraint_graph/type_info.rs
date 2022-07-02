@@ -7,15 +7,15 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TypeInfo<T: ContextType> {
+pub(crate) struct Inferred<T: ContextType> {
     pub(crate) ty: T,
     pub(crate) subtys: SubTys<T::SubTyId>,
     pub(crate) upper_bounds: HashSet<Key>,
 }
 
-impl<T: ContextType> TypeInfo<T> {
+impl<T: ContextType> Inferred<T> {
     pub(crate) fn top() -> Self {
-        TypeInfo { ty: T::top(), subtys: SubTys::top(), upper_bounds: HashSet::new() }
+        Inferred { ty: T::top(), subtys: SubTys::top(), upper_bounds: HashSet::new() }
     }
 
     pub(crate) fn equal(this: &Self, that: &Self, ctx: &T::Context) -> bool {
