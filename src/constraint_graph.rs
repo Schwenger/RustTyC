@@ -5,7 +5,7 @@ use crate::{types::ContextType, Key, TcErr};
 mod construction_logic;
 mod graph_logic;
 mod inference_logic;
-mod type_info;
+mod inferred;
 use graph_logic::Vertex;
 
 use self::graph_logic::FullVertex;

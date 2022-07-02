@@ -1,6 +1,6 @@
 use crate::{subtys::Equates, ContextType, Key, TcErr};
 
-use super::{graph_logic::Vertex, type_info::Inferred, ConstraintGraph};
+use super::{graph_logic::Vertex, inferred::Inferred, ConstraintGraph};
 
 impl<T: ContextType> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  

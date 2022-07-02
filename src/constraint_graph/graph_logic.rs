@@ -1,6 +1,6 @@
 use crate::{ContextType, Key, TcErr};
 
-use super::{type_info::Inferred, ConstraintGraph};
+use super::{inferred::Inferred, ConstraintGraph};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Vertex<T: ContextType> {
