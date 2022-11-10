@@ -1,6 +1,6 @@
 //! This crate provides an interface to perform lattice-based type checking on arbitrary structures.
 //!
-//! The [TypeChecker] struct constitutes the main struct.  It provides functions to create new [TcKey]s.  
+//! The [TypeChecker] struct constitutes the main struct.  It provides functions to create new [TcKey]s.
 //! These keys represent typed entities such as terms or variables in programming languages.
 //! [TcKey] provides a set of functions generating constraints such as 'the type behind key a is more concrete than the type behind key b'
 //! or 'type X is an upper bound of the type behind key a'.
@@ -76,7 +76,7 @@
 //! ## Additional Examples
 //! Check the documentation of [TcKey] for all possible constraints imposable on keys and their effects.
 //! Check the RustTyC examples on github for more elaborate examples.
-//!     
+//!
 
 #![deny(
     missing_docs,
@@ -88,8 +88,8 @@
     unstable_features,
     unused_import_braces,
     unused_qualifications,
-    broken_intra_doc_links,
-    unused_results
+    unused_results,
+    rustdoc::broken_intra_doc_links,
 )]
 
 pub(crate) mod constraint_graph;

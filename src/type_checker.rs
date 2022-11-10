@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-/// Represents a re-usable variable in the type checking procedure.  
+/// Represents a re-usable variable in the type checking procedure.
 ///
 /// [TcKey]s for variables will be managed by the [TypeChecker].
 pub trait TcVar: Debug + Eq + Hash + Clone {}
@@ -72,18 +72,18 @@ impl<V: Variant> TypeChecker<V, NoVars> {
 
 // %%%%%%%%%%% PUBLIC INTERFACE %%%%%%%%%%%
 impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
-    /// Creates a new, empty type checker.  
+    /// Creates a new, empty type checker.
     pub fn new() -> Self {
         Self::with_context(())
     }
 }
 impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
-    /// Creates a new, empty type checker with the given context.  
+    /// Creates a new, empty type checker with the given context.
     pub fn with_context(context: V::Context) -> Self {
         TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new(), context }
     }
 
-    /// Generates a new key representing a term.  
+    /// Generates a new key representing a term.
     pub fn new_term_key(&mut self) -> TcKey {
         self.graph.create_vertex()
     }
@@ -108,8 +108,7 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// Calling this function several times on a parent with the same `nth` results in the same key.
     pub fn get_child_key(&mut self, parent: TcKey, nth: usize) -> Result<TcKey, TcErr<V>> {
         let TypeChecker { graph, variables: _, context } = self;
-        let key = graph.nth_child(parent, nth, &context)?;
-        // *self = TypeChecker { graph, variables, context };
+        let key = graph.nth_child(parent, nth, context)?;
         Ok(key)
     }
 
@@ -120,12 +119,12 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
             Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
             Constraint::Equal(a, b) => {
                 let TypeChecker { graph, variables: _, context } = self;
-                graph.equate(a, b, &context)?;
+                graph.equate(a, b, context)?;
             }
             Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
             Constraint::MoreConcExplicit(target, bound) => {
                 let TypeChecker { graph, variables: _, context } = self;
-                graph.explicit_bound(target, bound, &context)?;
+                graph.explicit_bound(target, bound, context)?;
             }
         }
         Ok(())
@@ -149,7 +148,7 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// Updates the current context.
     ///
     /// Applies the `update` function to the context of the current typechecker.
-    /// The function may mutate the context.  
+    /// The function may mutate the context.
     ///
     /// # Warning
     /// This will not change any call retroactively, i.e. it only applies to future
