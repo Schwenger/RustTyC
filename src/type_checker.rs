@@ -155,21 +155,6 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         self.graph.all_keys()
     }
 
-    /// Updates the current context.
-    ///
-    /// Applies the `update` function to the context of the current typechecker.
-    /// The function may mutate the context.
-    ///
-    /// # Warning
-    /// This will not change any call retroactively, i.e. it only applies to future
-    /// meet and equate calls.  Proceed with caution.
-    pub fn update_context<F>(&mut self, update: F)
-    where
-        F: FnOnce(&mut V::Context),
-    {
-        update(&mut self.context);
-    }
-
     /// Returns an immutable reference to the context.
     pub fn context(&self) -> &V::Context {
         &self.context
