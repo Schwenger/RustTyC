@@ -147,7 +147,7 @@ impl Arity {
 /// The `least_arity` indicates how many children this instance of the variance has according to the current state of the type checker.
 /// The value might increase in the future but never decrease.
 #[derive(Debug, Clone)]
-pub struct Partial<V: Sized> {
+pub struct Partial<V> {
     /// The variant represented by this `Partial`.
     pub variant: V,
     ///The least number of children the variant will have after completing the type check.
