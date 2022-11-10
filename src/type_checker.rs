@@ -13,9 +13,16 @@ use std::hash::Hash;
 /// [TcKey]s for variables will be managed by the [TypeChecker].
 pub trait TcVar: Debug + Eq + Hash + Clone {}
 
+/// A convenience struct representing non-existant variables during a type check precedure.  Can and should not be accessed, modified, or created.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct NoVars {
+    unit: (), // Prevents external creation.
+}
+
+impl TcVar for NoVars {}
+
 /// The [TypeChecker] is the main interaction point for the type checking procedure.
 ///
-/// The [TypeChecker] is the main interaction point for the type checking procedure.
 /// It provides functionality to obtain [TcKey]s, manage variables, impose constraints, and generate a type table.
 ///
 /// # Related Data Structures
@@ -54,19 +61,12 @@ impl<V: Variant, Var: TcVar> Default for TypeChecker<V, Var> {
     }
 }
 
-/// A convenience struct representing non-existant variables during a type check precedure.  Can and should not be accessed, modified, or created.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct NoVars {
-    unit: (), // Prevents external creation.
-}
-impl TcVar for NoVars {}
-
 /// A [TypeChecker] instance in case no variables are required.
 pub type VarlessTypeChecker<V> = TypeChecker<V, NoVars>;
 
 impl<V: Variant> TypeChecker<V, NoVars> {
     /// Instantiates a new, empty type checker that does not require variables.
-    pub fn without_vars() -> VarlessTypeChecker<V> {
+    pub fn without_vars() -> Self {
         TypeChecker::new()
     }
 }
@@ -171,8 +171,17 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// For recursive types, the respective [Preliminary] provides access to [crate::TcKey]s refering to their children.
     /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
     pub fn type_check_preliminary(self) -> Result<PreliminaryTypeTable<V>, TcErr<V>> {
-        let TypeChecker { graph, variables: _, context } = self;
-        graph.solve_preliminary(context)
+        let (result, _) = self.type_check_preliminary_with_context();
+        result
+    }
+
+    /// Finalizes the type check procedure without constructing a full type table.
+    ///
+    /// See [`TypeChecker::type_check_preliminary`] for details.
+    pub fn type_check_preliminary_with_context(self) -> (Result<PreliminaryTypeTable<V>, TcErr<V>>, V::Context) {
+        let TypeChecker { graph, variables: _, mut context } = self;
+        let result = graph.solve_preliminary(&mut context);
+        (result, context)
     }
 }
 
@@ -186,8 +195,17 @@ where
     /// minimally constrained, constructed type, i.e. [Constructable::Type].  Refer to [TypeChecker::type_check_preliminary()] if [Variant] does not implement [Constructable].
     /// If any constrained caused a contradiction, it will return a [TcErr] containing information about it.
     pub fn type_check(self) -> Result<TypeTable<V>, TcErr<V>> {
-        let TypeChecker { graph, variables: _, context } = self;
-        graph.solve(context)
+        let (result, _) = self.type_check_with_context();
+        result
+    }
+
+    /// Finalizes the type check procedure, and returns ownership of the context to the caller.
+    ///
+    /// See [`TypeChecker::type_check_with_context`] for details.
+    pub fn type_check_with_context(self) -> (Result<TypeTable<V>, TcErr<V>>, V::Context) {
+        let TypeChecker { graph, variables: _, mut context } = self;
+        let result = graph.solve(&mut context);
+        (result, context)
     }
 }
 
