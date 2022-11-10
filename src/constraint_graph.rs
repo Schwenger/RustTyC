@@ -452,11 +452,11 @@ where
     V: Constructable,
 {
     pub(crate) fn solve(mut self, context: &mut V::Context) -> Result<TypeTable<V>, TcErr<V>> {
-        self.solve_constraints(context)?;
-        self.construct_types()
+        self.solve_constraints(&mut *context)?;
+        self.construct_types(&mut *context)
     }
 
-    fn construct_types(self) -> Result<TypeTable<V>, TcErr<V>> {
+    fn construct_types(self, context: &mut V::Context) -> Result<TypeTable<V>, TcErr<V>> {
         let mut resolved: HashMap<TcKey, V::Type> = HashMap::new();
         let mut open: Vec<&FullVertex<V>> = self.reprs().collect();
         loop {
@@ -471,7 +471,7 @@ where
                         if let Some(key) = c {
                             Ok(resolved.get(&self.repr(*key).this).cloned())
                         } else {
-                            V::construct(&V::top(), &[])
+                            V::top().construct(&[], &mut *context)
                                 .map(Some)
                                 .map_err(|e| {
                                     TcErr::ChildConstruction(v.this, ix, v.ty.to_preliminary(), e)
@@ -482,7 +482,7 @@ where
 
                 if let Some(children) = children {
                     let ty = v.ty.variant
-                        .construct(&children)
+                        .construct(&children, &mut *context)
                         .map_err(|e| {
                             TcErr::Construction(v.this, v.ty.to_preliminary(), e)
                         })?;

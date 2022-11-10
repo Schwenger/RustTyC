@@ -164,6 +164,7 @@ pub struct Preliminary<V: ContextSensitiveVariant> {
 
 /// A type table containing a [Preliminary] type for each [TcKey].  Mainly used if [ContextSensitiveVariant] does not implement [Constructable].
 pub type PreliminaryTypeTable<V> = HashMap<TcKey, Preliminary<V>>;
+
 /// A type table containing the constructed type of the inferred [ContextSensitiveVariant] for each [TcKey].  Requires [ContextSensitiveVariant] to implement [Constructable].
 pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
 
@@ -171,7 +172,8 @@ pub type TypeTable<V> = HashMap<TcKey, <V as Constructable>::Type>;
 pub trait Constructable: ContextSensitiveVariant {
     /// The result type of the attempted construction.
     type Type: Clone + Debug;
+
     /// Attempts to transform `self` into an more concrete `Self::Type`.
     /// Returns a [ContextSensitiveVariant::Err] if the transformation fails.  This error will be wrapped into a [crate::TcErr] to enrich it with contextual information.
-    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, <Self as ContextSensitiveVariant>::Err>;
+    fn construct(&self, children: &[Self::Type], context: &mut Self::Context) -> Result<Self::Type, Self::Err>;
 }

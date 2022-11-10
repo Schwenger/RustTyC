@@ -100,7 +100,7 @@ enum Expression {
 impl Constructable for Variant {
     type Type = Type;
 
-    fn construct(&self, children: &[Self::Type]) -> Result<Self::Type, Self::Err> {
+    fn construct(&self, children: &[Self::Type], _ctx: &mut Self::Context) -> Result<Self::Type, Self::Err> {
         assert!(children.is_empty(), "spurious children");
         use Variant::*;
         match self {
