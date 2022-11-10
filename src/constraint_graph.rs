@@ -406,8 +406,8 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
                     .iter()
                     .copied()
                     .map(|b| (&self.repr(b).ty, b))
-                    .fold(Ok(initial), |lhs, rhs| {
-                        let (mut old_ty, mut equates) = lhs?;
+                    .try_fold(initial, |lhs, rhs| {
+                        let (mut old_ty, mut equates) = lhs;
                         let (rhs, partner_key) = rhs;
                         let new_equates = old_ty.meet(key, partner_key, rhs, context)?;
                         equates.extend(new_equates);
@@ -424,8 +424,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
 
                 Ok(change)
             })
-            .collect::<Result<Vec<bool>, TcErr<T>>>()
-            .map(|changes| changes.into_iter().any(|b| b))
+            .try_fold(false, |acc, chg| Ok(acc || chg?))
     }
 
     #[must_use]
