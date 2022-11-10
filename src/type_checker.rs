@@ -42,7 +42,7 @@ pub trait TcVar: Debug + Eq + Hash + Clone {}
 /// # Example
 /// See [`crate documentation`](index.html).
 #[derive(Debug, Clone)]
-pub struct TypeChecker<V: ContextSensitiveVariant, Var: TcVar> {
+pub struct TypeChecker<V: ContextSensitiveVariant, Var> {
     variables: HashMap<Var, TcKey>,
     graph: ConstraintGraph<V>,
     context: V::Context,
@@ -63,6 +63,7 @@ impl TcVar for NoVars {}
 
 /// A [TypeChecker] instance in case no variables are required.
 pub type VarlessTypeChecker<V> = TypeChecker<V, NoVars>;
+
 impl<V: Variant> TypeChecker<V, NoVars> {
     /// Instantiates a new, empty type checker that does not require variables.
     pub fn without_vars() -> VarlessTypeChecker<V> {
@@ -80,7 +81,11 @@ impl<V: Variant, Var: TcVar> TypeChecker<V, Var> {
 impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// Creates a new, empty type checker with the given context.
     pub fn with_context(context: V::Context) -> Self {
-        TypeChecker { variables: HashMap::new(), graph: ConstraintGraph::new(), context }
+        TypeChecker {
+            variables: HashMap::new(),
+            graph: ConstraintGraph::new(),
+            context,
+        }
     }
 
     /// Generates a new key representing a term.
@@ -92,8 +97,8 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// If so, it returns the key.  Otherwise, it generates a new one.
     pub fn get_var_key(&mut self, var: &Var) -> TcKey {
         // Avoid cloning `var` by forgoing the `entry` function if possible.
-        if let Some(tck) = self.variables.get(var) {
-            *tck
+        if let Some(&tck) = self.variables.get(var) {
+            tck
         } else {
             let key = self.new_term_key();
             let _ = self.variables.insert(var.clone(), key);
@@ -116,23 +121,28 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
     /// Returns a [TcErr] if the constraint immediately reveals a contradiction.
     pub fn impose(&mut self, constr: Constraint<V>) -> Result<(), TcErr<V>> {
         match constr {
-            Constraint::Conjunction(cs) => cs.into_iter().try_for_each(|c| self.impose(c))?,
+            Constraint::Conjunction(cs) => {
+                cs.into_iter().try_for_each(|c| self.impose(c))
+            }
             Constraint::Equal(a, b) => {
                 let TypeChecker { graph, variables: _, context } = self;
-                graph.equate(a, b, context)?;
+                graph.equate(a, b, context)
             }
-            Constraint::MoreConc { target, bound } => self.graph.add_upper_bound(target, bound),
+            Constraint::MoreConc { target, bound } => {
+                self.graph.add_upper_bound(target, bound);
+                Ok(())
+            }
             Constraint::MoreConcExplicit(target, bound) => {
                 let TypeChecker { graph, variables: _, context } = self;
-                graph.explicit_bound(target, bound, context)?;
+                graph.explicit_bound(target, bound, context)
             }
         }
-        Ok(())
     }
 
     /// Lifts a collection of keys as children into a certain recursive variant.
-    pub fn lift_into(&mut self, variant: V, mut sub_types: Vec<TcKey>) -> TcKey {
-        self.lift_partially(variant, sub_types.drain(..).map(Some).collect())
+    pub fn lift_into(&mut self, variant: V, sub_types: Vec<TcKey>) -> TcKey {
+        let sub_types = sub_types.into_iter().map(Some).collect();
+        self.lift_partially(variant, sub_types)
     }
 
     /// Lifts a collection of keys as subset of children into a certain recursive variant.
@@ -158,6 +168,16 @@ impl<V: ContextSensitiveVariant, Var: TcVar> TypeChecker<V, Var> {
         F: FnOnce(&mut V::Context),
     {
         update(&mut self.context);
+    }
+
+    /// Returns an immutable reference to the context.
+    pub fn context(&self) -> &V::Context {
+        &self.context
+    }
+
+    /// Returns a mutable reference to the context.
+    pub fn context_mut(&mut self) -> &mut V::Context {
+        &mut self.context
     }
 
     /// Finalizes the type check procedure without constructing a full type table.  Refer to [TypeChecker::type_check] if [Variant] implements [Constructable].

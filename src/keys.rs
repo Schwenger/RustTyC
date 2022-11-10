@@ -1,9 +1,8 @@
 //! The type checker uses [TcKey] to refer to entities like variables or terms.  [Constraint] related different keys and abstract/concrete types.
 //!
-//! [TcKey]s are an inexpensive and simple indexing mechanism that can be copied, checked for equality, and hashed.  
+//! [TcKey]s are an inexpensive and simple indexing mechanism that can be copied, checked for equality, and hashed.
 //! A [TcKey] offers functions for relating them to other keys or types, symmetrically or asymmetrically.
 
-use crate::types::ContextSensitiveVariant;
 use std::hash::Hash;
 
 /// Represents a constraint on one or several [TcKey]s and/or types.
@@ -12,7 +11,7 @@ use std::hash::Hash;
 /// purpose.  They can then be passed to the [TypeChecker] via the [Typechecker::impose()] function.
 #[must_use = "the creation of a `TypeConstraint` has no effect, it should be passed to a `TypeChecker`"]
 #[derive(Debug, Clone)]
-pub enum Constraint<V: ContextSensitiveVariant> {
+pub enum Constraint<V> {
     /// equate_withs two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
     #[doc(hidden)]
     Equal(TcKey, TcKey),
@@ -27,6 +26,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
         #[doc(hidden)]
         bound: TcKey,
     },
+
     /// An asymmetric relation between a key and a type.  Note that the type cannot change over time.
     #[doc(hidden)]
     MoreConcExplicit(TcKey, V),
@@ -59,6 +59,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///
 /// impl Variant for MyVariant {
 ///     type Err = String;
+///
 ///     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
 ///         use MyVariant::*;
 ///         let variant = match (lhs.variant, rhs.variant) {
@@ -71,9 +72,11 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///         }?;
 ///         Ok(Partial { variant, least_arity: 0 })
 ///     }
+///
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
+///
 ///     fn arity(&self) -> Arity {
 ///         Arity::Fixed(0)
 ///     }
@@ -98,6 +101,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///
 /// impl Variant for MyVariant {
 ///     type Err = String;
+///
 ///     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
 ///         use MyVariant::*;
 ///         let variant = match (lhs.variant, rhs.variant) {
@@ -110,9 +114,11 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///         }?;
 ///         Ok(Partial { variant, least_arity: 0 })
 ///     }
+///
 ///     fn top() -> Self {
 ///         Self::Top
 ///     }
+///
 ///     fn arity(&self) -> Arity {
 ///         Arity::Fixed(0)
 ///     }
@@ -140,7 +146,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 /// // we did not impose a constraint on it, yet, so its the top element.
 /// assert_eq!(tt[&key4].variant, MyVariant::Top);
 ///
-/// // Concretize key3 to be a UInt.  Also affects key2 due to unification.  
+/// // Concretize key3 to be a UInt.  Also affects key2 due to unification.
 /// // key1 is unaffected because of the asymmetric relation between key1 and key2,
 /// // which translates to an asymmetric relation between key1 and key3 as well.
 /// tc.impose(key3.concretizes_explicit(MyVariant::UInt))?;
@@ -171,7 +177,7 @@ pub enum Constraint<V: ContextSensitiveVariant> {
 ///
 /// let res = tc.type_check_preliminary();
 /// // The meet of numeric types and strings will fail, so key6 cannot be resolved.
-/// assert!(res.is_err());  
+/// assert!(res.is_err());
 /// # Ok(())
 /// # }
 /// ```
@@ -188,36 +194,42 @@ impl TcKey {
 
 impl TcKey {
     /// Connects two keys asymmetrically.  Refining `bound` refines `self` whereas refining `self` leaves `bound` unaffected.
-    pub fn concretizes<V: ContextSensitiveVariant>(self, bound: Self) -> Constraint<V> {
+    pub fn concretizes<V>(self, bound: Self) -> Constraint<V> {
         Constraint::MoreConc { target: self, bound }
     }
+
     /// Equates two keys, i.e., they refer to the same type and are thus symmetrically connected.  Refining one will refine the other as well.
-    pub fn equate_with<V: ContextSensitiveVariant>(self, other: Self) -> Constraint<V> {
+    pub fn equate_with<V>(self, other: Self) -> Constraint<V> {
         assert_ne!(self, other, "Cannot equate equal keys.");
         Constraint::Equal(self, other)
     }
+
     /// Declares that `self` is at least as concrete as `bound`.
-    pub fn concretizes_explicit<V: ContextSensitiveVariant>(self, bound: V) -> Constraint<V> {
+    pub fn concretizes_explicit<V>(self, bound: V) -> Constraint<V> {
         Constraint::MoreConcExplicit(self, bound)
     }
-    /// Declares that `self` is the meet of `left` and `right`.  
+
+    /// Declares that `self` is the meet of `left` and `right`.
     /// This binds `self` to both `left` and `right` asymmetrically.
-    pub fn is_meet_of<V: ContextSensitiveVariant>(self, left: Self, right: Self) -> Constraint<V> {
+    pub fn is_meet_of<V>(self, left: Self, right: Self) -> Constraint<V> {
         self.is_meet_of_all(&[left, right])
     }
-    /// Declares that `self` is the meet of all elements contained in `elems`.  
+
+    /// Declares that `self` is the meet of all elements contained in `elems`.
     /// This binds `self` to all of these keys asymmetrically.
-    pub fn is_meet_of_all<V: ContextSensitiveVariant>(self, elems: &[Self]) -> Constraint<V> {
-        Constraint::Conjunction(elems.iter().map(|e| self.concretizes(*e)).collect())
+    pub fn is_meet_of_all<V>(self, elems: &[Self]) -> Constraint<V> {
+        Constraint::Conjunction(elems.iter().map(|&e| self.concretizes(e)).collect())
     }
-    /// Declares that `self` is the symmetric meet of `left` and `right`.  
+
+    /// Declares that `self` is the symmetric meet of `left` and `right`.
     /// This binds `self` to both `left` and `right` symmetrically.
-    pub fn is_sym_meet_of<V: ContextSensitiveVariant>(self, left: Self, right: Self) -> Constraint<V> {
+    pub fn is_sym_meet_of<V>(self, left: Self, right: Self) -> Constraint<V> {
         self.is_sym_meet_of_all(&[left, right])
     }
-    /// Declares that `self` is the symmetric meet of all elements contained in `elems`.  
+
+    /// Declares that `self` is the symmetric meet of all elements contained in `elems`.
     /// This binds `self` to all of these keys symmetrically.
-    pub fn is_sym_meet_of_all<V: ContextSensitiveVariant>(self, elems: &[Self]) -> Constraint<V> {
-        Constraint::Conjunction(elems.iter().map(|e| self.equate_with(*e)).collect())
+    pub fn is_sym_meet_of_all<V>(self, elems: &[Self]) -> Constraint<V> {
+        Constraint::Conjunction(elems.iter().map(|&e| self.equate_with(e)).collect())
     }
 }

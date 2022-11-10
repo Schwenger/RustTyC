@@ -5,19 +5,19 @@ use crate::{
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
-pub(crate) struct ConstraintGraph<T: ContextSensitiveVariant> {
+pub(crate) struct ConstraintGraph<T> {
     vertices: Vec<Vertex<T>>,
 }
 
 #[derive(Debug, Clone)]
-enum Vertex<T: ContextSensitiveVariant> {
+enum Vertex<T> {
     /// Represents a former vertex that was unified with another one and not chosen to be the representative.
     Fwd { this: TcKey, repr: TcKey },
     /// Represents a full vertex.
     Repr(FullVertex<T>),
 }
 
-impl<T: ContextSensitiveVariant> Vertex<T> {
+impl<T> Vertex<T> {
     fn this(&self) -> TcKey {
         match self {
             Vertex::Fwd { this, .. } => *this,
@@ -55,13 +55,13 @@ impl<T: ContextSensitiveVariant> Vertex<T> {
 }
 
 #[derive(Debug, Clone)]
-struct FullVertex<T: ContextSensitiveVariant> {
+struct FullVertex<T> {
     this: TcKey,
     ty: Type<T>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Type<V: ContextSensitiveVariant> {
+struct Type<V> {
     variant: V,
     children: Vec<Option<TcKey>>,
     upper_bounds: HashSet<TcKey>,
@@ -69,9 +69,14 @@ struct Type<V: ContextSensitiveVariant> {
 
 type EquateObligation = Vec<(TcKey, TcKey)>;
 type OptEquateObligation = Vec<Option<(TcKey, TcKey)>>;
+
 impl<V: ContextSensitiveVariant> Type<V> {
     fn top() -> Self {
-        Type { variant: V::top(), children: Vec::new(), upper_bounds: HashSet::new() }
+        Type {
+            variant: V::top(),
+            children: Vec::new(),
+            upper_bounds: HashSet::new(),
+        }
     }
 
     fn equal(this: &Self, that: &Self, ctx: &V::Context) -> bool {
@@ -83,10 +88,14 @@ impl<V: ContextSensitiveVariant> Type<V> {
     fn set_arity_checked(&mut self, this: TcKey, new_arity: usize, ctx: &V::Context) -> Result<(), TcErr<V>> {
         match self.variant.arity(ctx) {
             Arity::Fixed(given_arity) if new_arity > given_arity => {
-                return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity))
+                return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity));
             }
-            Arity::Fixed(given_arity) => ConstraintGraph::<V>::fill_with(&mut self.children, None, given_arity),
-            Arity::Variable => ConstraintGraph::<V>::fill_with(&mut self.children, None, new_arity),
+            Arity::Fixed(given_arity) => {
+                ConstraintGraph::<V>::fill_with(&mut self.children, None, given_arity)
+            }
+            Arity::Variable => {
+                ConstraintGraph::<V>::fill_with(&mut self.children, None, new_arity)
+            }
         }
         Ok(())
     }
@@ -96,12 +105,12 @@ impl<V: ContextSensitiveVariant> Type<V> {
     }
 
     fn child(&self, n: usize) -> Option<TcKey> {
-        debug_assert!(self.children.len() > n);
+        debug_assert!(n < self.children.len());
         self.children[n]
     }
 
     fn set_child(&mut self, n: usize, child: TcKey) {
-        debug_assert!(self.children.len() > n);
+        debug_assert!(n < self.children.len());
         self.children[n] = Some(child);
     }
 
@@ -124,24 +133,23 @@ impl<V: ContextSensitiveVariant> Type<V> {
         debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == left_arity).unwrap_or(true));
         debug_assert!(rhs.variant.arity(ctx).to_opt().map(|a| a == right_arity).unwrap_or(true));
 
-        // println!("Meeting {:?} and {:?}.", lhs, rhs);
-
         let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
         let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
         let Partial { variant: new_variant, least_arity } =
             ContextSensitiveVariant::meet(left, right, ctx).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
 
         // Make child arrays same length.
-        ConstraintGraph::<V>::fill_with(&mut lhs.children, None, right_arity); // Will be checked later.
+        // Will be checked later.
+        ConstraintGraph::<V>::fill_with(&mut lhs.children, None, right_arity);
 
-        let (mut equates, new_children): (OptEquateObligation, Vec<Option<TcKey>>) = lhs
+        let (equates, new_children): (OptEquateObligation, Vec<Option<TcKey>>) = lhs
             .children
             .iter()
-            .zip(rhs.children.iter().chain(std::iter::repeat(&None)))
-            .map(|(a, b)| (a.zip(*b), a.or(*b)))
+            .zip(rhs.children.iter().copied().chain(std::iter::repeat(None)))
+            .map(|(a, b)| (a.zip(b), a.or(b)))
             .unzip();
 
-        let equates: EquateObligation = equates.drain(..).flatten().collect();
+        let equates: EquateObligation = equates.into_iter().flatten().collect();
 
         // commit changes
         lhs.variant = new_variant;
@@ -149,19 +157,23 @@ impl<V: ContextSensitiveVariant> Type<V> {
         lhs.upper_bounds.extend(rhs.upper_bounds.iter());
         lhs.set_arity_checked(target_key, least_arity, ctx)?;
 
-        // println!("Result: {:?}", lhs);
-
-        debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == lhs.children.len()).unwrap_or(true));
+        debug_assert!(
+            lhs.variant.arity(ctx).to_opt().map(|a| a == lhs.children.len()).unwrap_or(true)
+        );
 
         Ok(equates)
     }
 
     fn to_partial(&self) -> Partial<V> {
-        Partial { variant: self.variant.clone(), least_arity: self.children.len() }
+        Partial {
+            variant: self.variant.clone(),
+            least_arity: self.children.len(),
+        }
     }
 
     fn with_partial(&mut self, this: TcKey, p: Partial<V>, ctx: &V::Context) -> Result<(), TcErr<V>> {
         let Partial { variant, least_arity } = p;
+
         match variant.arity(ctx) {
             Arity::Variable => {
                 self.variant = variant;
@@ -181,16 +193,24 @@ impl<V: ContextSensitiveVariant> Type<V> {
                         reported_arity: least_arity,
                     });
                 }
+
                 self.variant = variant;
                 self.set_arity_unchecked(least_arity); // set_arity increases or is no-op.
-                debug_assert!(self.variant.arity(ctx).to_opt().map(|a| a == self.children.len()).unwrap_or(true));
+
+                debug_assert!(
+                    self.variant.arity(ctx).to_opt().map(|a| a == self.children.len()).unwrap_or(true)
+                );
+
                 Ok(())
             }
         }
     }
 
     fn to_preliminary(&self) -> Preliminary<V> {
-        Preliminary { variant: self.variant.clone(), children: self.children.clone() }
+        Preliminary {
+            variant: self.variant.clone(),
+            children: self.children.clone(),
+        }
     }
 }
 
@@ -256,7 +276,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
 
     /// Imposes an explicit bound on a key.  An Err return indicates a contradiction, an Ok does not indicate the absence of a contradiction.
     pub(crate) fn explicit_bound(&mut self, target: TcKey, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
-        self.add_explicit_bound(target, bound, context).map(|_| ())
+        self.add_explicit_bound(target, bound, context).map(drop)
     }
 
     // INTERNAL HELPER FUNCTIONS
@@ -268,20 +288,22 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
             // out with the identity relation;  nothing to do.
             return Ok(());
         }
-        debug_assert_eq!(sub, self.repr(sub).this, "cannot establish a forward for a vertex that already is a forward");
+
+        debug_assert_eq!(
+            sub, self.repr(sub).this,
+            "cannot establish a forward for a vertex that already is a forward"
+        );
+
         let mut new_fwd = Vertex::Fwd { this: sub, repr };
         // Replace `sub` vertex with new_fwd.
-        std::mem::swap(self.vertex_mut(sub), &mut new_fwd);
+        core::mem::swap(self.vertex_mut(sub), &mut new_fwd);
 
         let sub_v = new_fwd.full(); // We asserted it to be a full vertex.
         let repr_v = self.repr_mut(repr);
-        // Meet-Alternative: let repr_v = self.repr(repr);
 
         let equates = repr_v.ty.meet(repr, sub, &sub_v.ty, context)?;
-        // Meet-Alternative: let (new_ty, equates) = repr_v.ty.meet(repr, &sub_v.ty)?;
         equates.into_iter().try_for_each(|(a, b)| self.equate(a, b, context))?;
 
-        // Meet-Alternative: self.repr_mut(repr).ty = new_ty;
         Ok(())
     }
 
@@ -327,9 +349,9 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     }
 
     fn repr(&self, v: TcKey) -> &FullVertex<T> {
-        match &self.vertex(v) {
-            Vertex::Repr(fv) => fv,
-            Vertex::Fwd { repr, .. } => self.repr(*repr),
+        match *self.vertex(v) {
+            Vertex::Repr(ref fv) => fv,
+            Vertex::Fwd { repr, .. } => self.repr(repr),
         }
     }
 
@@ -347,11 +369,13 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
         if self.is_cyclic() {
             return Err(TcErr::CyclicGraph);
         }
+
         let mut change = true;
+
         while change {
-            change = false;
-            change |= self.resolve_asymmetric(&context)?;
+            change = self.resolve_asymmetric(&context)?;
         }
+
         Ok(())
     }
 
@@ -363,9 +387,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     fn construct_preliminary(self) -> PreliminaryTypeTable<T> {
         self.vertices
             .iter()
-            .map(|v| v.this())
-            .collect::<Vec<TcKey>>()
-            .into_iter()
+            .map(Vertex::this)
             .map(|key| (key, self.repr(key).ty.to_preliminary()))
             .collect()
     }
@@ -375,26 +397,31 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
         self.vertices
             .iter()
             .map(Vertex::this)
-            .collect::<Vec<TcKey>>()
+            .collect::<Vec<_>>() // necessary because both mapped closures need mutable access
             .into_iter()
             .map(|key| {
                 let vertex = self.repr(key);
                 let initial: (Type<T>, EquateObligation) = (vertex.ty.clone(), Vec::new());
-                let (new_type, equates) =
-                    vertex.ty.upper_bounds.iter().map(|b| (&self.repr(*b).ty, *b)).fold(Ok(initial), |lhs, rhs| {
+                let (new_type, equates) = vertex.ty.upper_bounds
+                    .iter()
+                    .copied()
+                    .map(|b| (&self.repr(b).ty, b))
+                    .fold(Ok(initial), |lhs, rhs| {
                         let (mut old_ty, mut equates) = lhs?;
                         let (rhs, partner_key) = rhs;
                         let new_equates = old_ty.meet(key, partner_key, rhs, context)?;
-                        // Meet-Alternative:
-                        // let (old_ty, mut equates) = lhs?;
-                        // let (new_ty, new_equates) = old_ty.meet(key, rhs)?;
                         equates.extend(new_equates);
-                        // Meet-Alternative: Ok((new_ty, equates))
                         Ok((old_ty, equates))
                     })?;
+
                 let change = !Type::equal(&vertex.ty, &new_type, context);
+
                 self.repr_mut(key).ty = new_type;
-                equates.into_iter().try_for_each(|(k1, k2)| self.equate(k1, k2, context))?;
+
+                equates
+                    .into_iter().
+                    try_for_each(|(k1, k2)| self.equate(k1, k2, context))?;
+
                 Ok(change)
             })
             .collect::<Result<Vec<bool>, TcErr<T>>>()
@@ -403,7 +430,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
 
     #[must_use]
     fn is_cyclic(&self) -> bool {
-        self.vertices.iter().any(|v| self.is_in_loop(v, vec![]))
+        self.vertices.iter().any(|v| self.is_in_loop(v, Vec::new()))
     }
 
     fn is_in_loop(&self, vertex: &Vertex<T>, mut history: Vec<TcKey>) -> bool {
@@ -435,42 +462,58 @@ where
         let mut open: Vec<&FullVertex<V>> = self.reprs().collect();
         loop {
             let mut still_open = Vec::with_capacity(open.len());
-            // println!("Resolved: {:?}", resolved);
-            // println!("Open: {:?}", open.iter().map(|d| d.this).collect::<Vec<TcKey>>());
             let num_open = open.len();
+
             for v in open {
-                let children =
-                    v.ty.children
-                        .iter()
-                        .enumerate()
-                        .map(|(ix, c)| {
-                            if let Some(key) = c {
-                                Ok(resolved.get(&self.repr(*key).this).cloned())
-                            } else {
-                                V::construct(&V::top(), &Vec::new())
-                                    .map(Some)
-                                    .map_err(|e| TcErr::ChildConstruction(v.this, ix, v.ty.to_preliminary(), e))
-                            }
-                        })
-                        .collect::<Result<Option<Vec<V::Type>>, TcErr<V>>>()?;
+                let children = v.ty.children
+                    .iter()
+                    .enumerate()
+                    .map(|(ix, c)| {
+                        if let Some(key) = c {
+                            Ok(resolved.get(&self.repr(*key).this).cloned())
+                        } else {
+                            V::construct(&V::top(), &[])
+                                .map(Some)
+                                .map_err(|e| {
+                                    TcErr::ChildConstruction(v.this, ix, v.ty.to_preliminary(), e)
+                                })
+                        }
+                    })
+                    .collect::<Result<Option<Vec<V::Type>>, TcErr<V>>>()?;
+
                 if let Some(children) = children {
-                    let ty =
-                        v.ty.variant
-                            .construct(&children)
-                            .map_err(|e| TcErr::Construction(v.this, v.ty.to_preliminary(), e))?;
+                    let ty = v.ty.variant
+                        .construct(&children)
+                        .map_err(|e| {
+                            TcErr::Construction(v.this, v.ty.to_preliminary(), e)
+                        })?;
+
                     let _ = resolved.insert(v.this, ty);
                 } else {
-                    still_open.push(v)
+                    still_open.push(v);
                 }
             }
+
             if still_open.is_empty() {
                 break;
             }
+
             if still_open.len() == num_open {
-                panic!("How tf does this diverge?!");
+                unreachable!("Solver fixpoint iteration diverged?!");
             }
+
             open = still_open;
         }
-        Ok(self.vertices.iter().map(|v| (v.this(), resolved[&self.repr(v.this()).this].clone())).collect())
+
+        let result = self
+            .vertices
+            .iter()
+            .map(|v| {
+                let this = v.this();
+                (this, resolved[&self.repr(this).this].clone())
+            })
+            .collect();
+
+        Ok(result)
     }
 }
