@@ -341,7 +341,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
 }
 
 impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
-    /// Starts a fix point computation successively checking and resolving constraints captured in the graph.  
+    /// Starts a fix point computation successively checking and resolving constraints captured in the graph.
     /// Returns the type table mapping each registered key to a type if no contradiction occurs.
     fn solve_constraints(&mut self, context: T::Context) -> Result<(), TcErr<T>> {
         if self.is_cyclic() {
@@ -410,13 +410,13 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
         match *vertex {
             Vertex::Fwd { this, repr } => {
                 if history.contains(&this) {
-                    return true;
+                    true
                 } else {
                     history.push(this);
-                    return self.is_in_loop(self.vertex(repr), history);
+                    self.is_in_loop(self.vertex(repr), history)
                 }
             }
-            Vertex::Repr(FullVertex { this, .. }) => return history.contains(&this),
+            Vertex::Repr(FullVertex { this, .. }) => history.contains(&this),
         }
     }
 }

@@ -11,3 +11,7 @@ Cargo.lock
 
 .idea/
 .vscode/
+
+**/*.swp
+**/*.swo
+**/*.swn
