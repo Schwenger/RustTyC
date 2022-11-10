@@ -89,36 +89,35 @@ pub trait ContextSensitiveVariant: Sized + Clone + Debug {
     /// In particular: `usize::max(lhs.least_arity, rhs.least_arity) <= result.least_arity`
     /// In the successful case, the variant and arity of the partial have to match, i.e., if the [Arity]
     /// is fixed with value `n`, then [Partial::least_arity] needs to be `n` as well.
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, ctx: &Self::Context) -> Result<Partial<Self>, Self::Err>;
+    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, ctx: &mut Self::Context) -> Result<Partial<Self>, Self::Err>;
 
     /// Indicates whether the variant has a fixed arity.  Note that this values does not have to be constant over all instances of the variant.
     /// A tuple, for example, might have a variable arity until the inferrence reaches a point where it is determined to be a pair or a triple.
     /// The pair and triple are both represented by the same type variant and have a fixed, non-specific arity.  Before obtaining this information,
     /// the tuple has a variable arity and potentially a different variant.
-    fn arity(&self, ctx: &Self::Context) -> Arity;
+    fn arity(&self, ctx: &mut Self::Context) -> Arity;
 
     /// Context-sensitive version of [Eq].  All rules apply.
-    fn equal(this: &Self, that: &Self, ctx: &Self::Context) -> bool;
+    fn equal(this: &Self, that: &Self, ctx: &mut Self::Context) -> bool;
 }
 
 impl<V: Variant> ContextSensitiveVariant for V {
     type Err = V::Err;
-
     type Context = ();
 
     fn top() -> Self {
         V::top()
     }
 
-    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, _ctx: &Self::Context) -> Result<Partial<Self>, Self::Err> {
+    fn meet(lhs: Partial<Self>, rhs: Partial<Self>, _ctx: &mut Self::Context) -> Result<Partial<Self>, Self::Err> {
         V::meet(lhs, rhs)
     }
 
-    fn arity(&self, _ctx: &Self::Context) -> Arity {
+    fn arity(&self, _ctx: &mut Self::Context) -> Arity {
         self.arity()
     }
 
-    fn equal(this: &Self, that: &Self, _ctx: &Self::Context) -> bool {
+    fn equal(this: &Self, that: &Self, _ctx: &mut Self::Context) -> bool {
         this == that
     }
 }

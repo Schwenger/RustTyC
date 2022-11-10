@@ -79,13 +79,13 @@ impl<V: ContextSensitiveVariant> Type<V> {
         }
     }
 
-    fn equal(this: &Self, that: &Self, ctx: &V::Context) -> bool {
+    fn equal(this: &Self, that: &Self, ctx: &mut V::Context) -> bool {
         V::equal(&this.variant, &that.variant, ctx)
             && this.children == that.children
             && this.upper_bounds == that.upper_bounds
     }
 
-    fn set_arity_checked(&mut self, this: TcKey, new_arity: usize, ctx: &V::Context) -> Result<(), TcErr<V>> {
+    fn set_arity_checked(&mut self, this: TcKey, new_arity: usize, ctx: &mut V::Context) -> Result<(), TcErr<V>> {
         match self.variant.arity(ctx) {
             Arity::Fixed(given_arity) if new_arity > given_arity => {
                 return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity));
@@ -123,7 +123,7 @@ impl<V: ContextSensitiveVariant> Type<V> {
         this: TcKey,
         target_key: TcKey,
         rhs: &Self,
-        ctx: &V::Context,
+        ctx: &mut V::Context,
     ) -> Result<EquateObligation, TcErr<V>> {
         // TODO: Extremely inefficient; improve.
         let lhs = self;
@@ -171,7 +171,7 @@ impl<V: ContextSensitiveVariant> Type<V> {
         }
     }
 
-    fn with_partial(&mut self, this: TcKey, p: Partial<V>, ctx: &V::Context) -> Result<(), TcErr<V>> {
+    fn with_partial(&mut self, this: TcKey, p: Partial<V>, ctx: &mut V::Context) -> Result<(), TcErr<V>> {
         let Partial { variant, least_arity } = p;
 
         match variant.arity(ctx) {
@@ -248,7 +248,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     /// the key is returned without calling the `keygen` function.  Otherwise, `keygen` generates a new key which will be added to the graph regularly,
     /// associated with the child, and returned.
     /// If the addition of the child reveals a contradiction, an Err is returned.  An Ok does _not_ indicate the absence of a contradiction.
-    pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize, context: &T::Context) -> Result<TcKey, TcErr<T>> {
+    pub(crate) fn nth_child(&mut self, parent: TcKey, n: usize, context: &mut T::Context) -> Result<TcKey, TcErr<T>> {
         let parent_v = self.repr_mut(parent);
         parent_v.ty.set_arity_checked(parent, n + 1, context)?; // n is an index, we want an arity of n+1
         let nth_child = parent_v.ty.child(n);
@@ -267,7 +267,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     }
 
     /// Declares a symmetric relation between two keys.
-    pub(crate) fn equate(&mut self, left: TcKey, right: TcKey, context: &T::Context) -> Result<(), TcErr<T>> {
+    pub(crate) fn equate(&mut self, left: TcKey, right: TcKey, context: &mut T::Context) -> Result<(), TcErr<T>> {
         let left = self.repr(left).this;
         let right = self.repr(right).this;
         let (rep, sub) = if left < right { (left, right) } else { (right, left) };
@@ -275,14 +275,14 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     }
 
     /// Imposes an explicit bound on a key.  An Err return indicates a contradiction, an Ok does not indicate the absence of a contradiction.
-    pub(crate) fn explicit_bound(&mut self, target: TcKey, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
+    pub(crate) fn explicit_bound(&mut self, target: TcKey, bound: T, context: &mut T::Context) -> Result<(), TcErr<T>> {
         self.add_explicit_bound(target, bound, context).map(drop)
     }
 
     // INTERNAL HELPER FUNCTIONS
 
     /// Transforms `sub` into a forward to `repr`.
-    fn establish_fwd(&mut self, sub: TcKey, repr: TcKey, context: &T::Context) -> Result<(), TcErr<T>> {
+    fn establish_fwd(&mut self, sub: TcKey, repr: TcKey, context: &mut T::Context) -> Result<(), TcErr<T>> {
         if sub == repr {
             // sub and repr are already in the same eq class since we started
             // out with the identity relation;  nothing to do.
@@ -314,7 +314,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
         v.this
     }
 
-    fn add_explicit_bound(&mut self, target: TcKey, bound: T, context: &T::Context) -> Result<(), TcErr<T>> {
+    fn add_explicit_bound(&mut self, target: TcKey, bound: T, context: &mut T::Context) -> Result<(), TcErr<T>> {
         let target_v = self.repr_mut(target);
         let lhs = target_v.ty.to_partial();
         let rhs_arity = bound.arity(context).to_opt().unwrap_or(0);
@@ -365,7 +365,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
 impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     /// Starts a fix point computation successively checking and resolving constraints captured in the graph.
     /// Returns the type table mapping each registered key to a type if no contradiction occurs.
-    fn solve_constraints(&mut self, context: T::Context) -> Result<(), TcErr<T>> {
+    fn solve_constraints(&mut self, context: &mut T::Context) -> Result<(), TcErr<T>> {
         if self.is_cyclic() {
             return Err(TcErr::CyclicGraph);
         }
@@ -373,13 +373,13 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
         let mut change = true;
 
         while change {
-            change = self.resolve_asymmetric(&context)?;
+            change = self.resolve_asymmetric(&mut *context)?;
         }
 
         Ok(())
     }
 
-    pub(crate) fn solve_preliminary(mut self, context: T::Context) -> Result<PreliminaryTypeTable<T>, TcErr<T>> {
+    pub(crate) fn solve_preliminary(mut self, context: &mut T::Context) -> Result<PreliminaryTypeTable<T>, TcErr<T>> {
         self.solve_constraints(context)?;
         Ok(self.construct_preliminary())
     }
@@ -393,7 +393,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     }
 
     /// Meets all the types of upper bounds with the type of the vertex itself.
-    fn resolve_asymmetric(&mut self, context: &T::Context) -> Result<bool, TcErr<T>> {
+    fn resolve_asymmetric(&mut self, context: &mut T::Context) -> Result<bool, TcErr<T>> {
         self.vertices
             .iter()
             .map(Vertex::this)
@@ -451,7 +451,7 @@ impl<V> ConstraintGraph<V>
 where
     V: Constructable,
 {
-    pub(crate) fn solve(mut self, context: V::Context) -> Result<TypeTable<V>, TcErr<V>> {
+    pub(crate) fn solve(mut self, context: &mut V::Context) -> Result<TypeTable<V>, TcErr<V>> {
         self.solve_constraints(context)?;
         self.construct_types()
     }
