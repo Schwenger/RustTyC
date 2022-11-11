@@ -244,6 +244,11 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// The error contains the affected key, the index of the child, the preliminary result of which a child construction failed, and the error
     /// reported by the construction of the child.
     ChildConstruction(TcKey, usize, Preliminary<V>, V::Err),
+    /// Indicates that resolution of open type variables during construction somehow diverged.
+    /// This should never happen unless there is a bug in the algorithm/implementation, but
+    /// it's better to report this as an error instead of silently panicking in a function
+    /// that otherwise returns `Result`. Contains the set of still unresolved keys.
+    DivergentConstruction(Vec<TcKey>),
     /// This error reports cyclic non-equality dependencies in the constraint graph.
     /// Example: Key 1 is more concrete than Key 2, which is more concrete than Key 3, which is more concrete than Key 1.
     CyclicGraph,

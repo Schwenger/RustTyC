@@ -2,6 +2,7 @@ use crate::{
     types::{Arity, Constructable, ContextSensitiveVariant, Partial, Preliminary, PreliminaryTypeTable, TypeTable},
     TcErr, TcKey,
 };
+use core::num::NonZeroUsize;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -91,10 +92,10 @@ impl<V: ContextSensitiveVariant> Type<V> {
                 return Err(TcErr::ChildAccessOutOfBound(this, self.variant.clone(), new_arity));
             }
             Arity::Fixed(given_arity) => {
-                ConstraintGraph::<V>::fill_with(&mut self.children, None, given_arity)
+                ConstraintGraph::<V>::fill_with(&mut self.children, None, given_arity);
             }
             Arity::Variable => {
-                ConstraintGraph::<V>::fill_with(&mut self.children, None, new_arity)
+                ConstraintGraph::<V>::fill_with(&mut self.children, None, new_arity);
             }
         }
         Ok(())
@@ -370,11 +371,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
             return Err(TcErr::CyclicGraph);
         }
 
-        let mut change = true;
-
-        while change {
-            change = self.resolve_asymmetric(&mut *context)?;
-        }
+        while self.resolve_asymmetric(&mut *context)? {}
 
         Ok(())
     }
@@ -459,17 +456,21 @@ where
     fn construct_types(self, context: &mut V::Context) -> Result<TypeTable<V>, TcErr<V>> {
         let mut resolved: HashMap<TcKey, V::Type> = HashMap::new();
         let mut open: Vec<&FullVertex<V>> = self.reprs().collect();
-        loop {
-            let mut still_open = Vec::with_capacity(open.len());
-            let num_open = open.len();
 
-            for v in open {
+        // `still_open` starts out as empty before the first iteration,
+        // and it ends up being empty upon the end of each iteration
+        // due to `Vec::append()`, so it can be hoisted out of the loop.
+        let mut still_open = Vec::with_capacity(open.len());
+
+        while let Some(num_open) = NonZeroUsize::new(open.len()) {
+            for v in open.drain(..) {
                 let children = v.ty.children
                     .iter()
+                    .copied()
                     .enumerate()
                     .map(|(ix, c)| {
                         if let Some(key) = c {
-                            Ok(resolved.get(&self.repr(*key).this).cloned())
+                            Ok(resolved.get(&self.repr(key).this).cloned())
                         } else {
                             V::top().construct(&[], &mut *context)
                                 .map(Some)
@@ -493,15 +494,13 @@ where
                 }
             }
 
-            if still_open.is_empty() {
-                break;
+            if still_open.len() >= num_open.get() {
+                let open_keys = still_open.into_iter().map(|v| v.this).collect();
+                return Err(TcErr::DivergentConstruction(open_keys));
             }
 
-            if still_open.len() == num_open {
-                unreachable!("Solver fixpoint iteration diverged?!");
-            }
-
-            open = still_open;
+            // open is empty here because of `drain(..)`
+            open.append(&mut still_open);
         }
 
         let result = self
@@ -509,7 +508,8 @@ where
             .iter()
             .map(|v| {
                 let this = v.this();
-                (this, resolved[&self.repr(this).this].clone())
+                let key = self.repr(this).this;
+                (this, resolved[&key].clone())
             })
             .collect();
 
