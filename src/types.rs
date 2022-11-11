@@ -155,7 +155,7 @@ pub struct Partial<V> {
 
 /// Represents a preliminary output of the type check.  Mainly used if [Variant] does not implement [Constructable].
 #[derive(Debug, Clone)]
-pub struct Preliminary<V: ContextSensitiveVariant> {
+pub struct Preliminary<V> {
     /// The type variant of the entity represented by this `Preliminary`.
     pub variant: V,
     /// The [TcKey]s of the children of this variant.

@@ -4,9 +4,11 @@ use crate::{
     keys::{Constraint, TcKey},
     types::Preliminary,
 };
+use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use core::hash::Hash;
+use std::error::Error;
 use std::collections::HashMap;
-use std::fmt::Debug;
-use std::hash::Hash;
+
 
 /// Represents a re-usable variable in the type checking procedure.
 ///
@@ -252,4 +254,81 @@ pub enum TcErr<V: ContextSensitiveVariant> {
     /// This error reports cyclic non-equality dependencies in the constraint graph.
     /// Example: Key 1 is more concrete than Key 2, which is more concrete than Key 3, which is more concrete than Key 1.
     CyclicGraph,
+}
+
+impl<V> Display for TcErr<V>
+where
+    V: ContextSensitiveVariant,
+{
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            TcErr::KeyEquation(lhs, rhs, error) => {
+                write!(
+                    f,
+                    "incompatible types for keys {:?} and {:?}: {:?}",
+                    lhs, rhs, error,
+                )
+            }
+            TcErr::Bound(k1, k2, error) => {
+                write!(
+                    f,
+                    "unsatisfiable bound for keys {:?} and {:?}: {:?}",
+                    k1, k2, error,
+                )
+            }
+            TcErr::ChildAccessOutOfBound(key, ty, idx) => {
+                write!(
+                    f,
+                    "child {} out of bounds for key {:?} (typed {:?})",
+                    idx, key, ty,
+                )
+            }
+            TcErr::ArityMismatch { key, variant, inferred_arity, reported_arity } => {
+                write!(
+                    f,
+                    "arity mismatch for key {:?} (typed {:?}): inferred {}, reported {}",
+                    key, variant, inferred_arity, reported_arity,
+                )
+            }
+            TcErr::Construction(key, ty, error) => {
+                write!(
+                    f,
+                    "failed to construct type for key {:?} from {:?}: {:?}",
+                    key, ty, error,
+                )
+            }
+            TcErr::ChildConstruction(key, index, ty, error) => {
+                write!(
+                    f,
+                    "failed to construct child {} for key {:?} from {:?}: {:?}",
+                    index, key, ty, error,
+                )
+            }
+            TcErr::DivergentConstruction(open_keys) => {
+                write!(f, "type construction diverged, keys still open: {:?}", open_keys)
+            }
+            TcErr::CyclicGraph => {
+                f.write_str("cannot satisfy circular constraints imposed on terms")
+            }
+        }
+    }
+}
+
+impl<V> Error for TcErr<V>
+where
+    V: ContextSensitiveVariant,
+    V::Err: Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            TcErr::KeyEquation(_, _, error) => Some(error),
+            TcErr::Bound(_, _, error) => Some(error),
+            TcErr::ChildAccessOutOfBound(..) => None,
+            TcErr::ArityMismatch { .. } => None,
+            TcErr::Construction(_, _, error) => Some(error),
+            TcErr::ChildConstruction(_, _, _, error) => Some(error),
+            TcErr::DivergentConstruction(_) => None,
+            TcErr::CyclicGraph => None,
+        }
+    }
 }
