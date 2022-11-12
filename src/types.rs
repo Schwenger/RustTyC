@@ -133,7 +133,7 @@ pub enum Arity {
 
 impl Arity {
     /// Transform `self` into an option, i.e., it will yield a `Some` with its arity if defined and `None` otherwise.
-    pub(crate) fn to_opt(self) -> Option<usize> {
+    pub fn to_opt(self) -> Option<usize> {
         match self {
             Arity::Variable => None,
             Arity::Fixed(n) => Some(n),
