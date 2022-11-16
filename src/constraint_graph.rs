@@ -20,9 +20,9 @@ enum Vertex<T> {
 
 impl<T> Vertex<T> {
     fn this(&self) -> TcKey {
-        match self {
-            Vertex::Fwd { this, .. } => *this,
-            Vertex::Repr(fv) => fv.this,
+        match *self {
+            Vertex::Fwd { this, .. } => this,
+            Vertex::Repr(ref fv) => fv.this,
         }
     }
 
@@ -48,8 +48,8 @@ impl<T> Vertex<T> {
 
     /// Returns the reference of the vertex representing this one.  Returns None if this vertex represents itself.
     fn get_repr_nontrans(&self) -> Option<TcKey> {
-        match self {
-            Vertex::Fwd { repr, .. } => Some(*repr),
+        match *self {
+            Vertex::Fwd { repr, .. } => Some(repr),
             Vertex::Repr(_) => None,
         }
     }
@@ -134,10 +134,10 @@ impl<V: ContextSensitiveVariant> Type<V> {
         debug_assert!(lhs.variant.arity(ctx).to_opt().map(|a| a == left_arity).unwrap_or(true));
         debug_assert!(rhs.variant.arity(ctx).to_opt().map(|a| a == right_arity).unwrap_or(true));
 
-        let left = Partial { variant: lhs.variant.clone(), least_arity: left_arity };
-        let right = Partial { variant: rhs.variant.clone(), least_arity: right_arity };
+        let left = lhs.to_partial();
+        let right = rhs.to_partial();
         let Partial { variant: new_variant, least_arity } =
-            ContextSensitiveVariant::meet(left, right, ctx).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
+            V::meet(left, right, ctx).map_err(|e| TcErr::Bound(this, Some(target_key), e))?;
 
         // Make child arrays same length.
         // Will be checked later.
@@ -146,7 +146,7 @@ impl<V: ContextSensitiveVariant> Type<V> {
         let (equates, new_children): (OptEquateObligation, Vec<Option<TcKey>>) = lhs
             .children
             .iter()
-            .zip(rhs.children.iter().copied().chain(std::iter::repeat(None)))
+            .zip(rhs.children.iter().copied().chain(core::iter::repeat(None)))
             .map(|(a, b)| (a.zip(b), a.or(b)))
             .unzip();
 
@@ -230,7 +230,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
 
     /// Create an iterator over all keys currently registered in the graph.
     pub(crate) fn all_keys(&self) -> impl Iterator<Item = TcKey> + '_ {
-        self.vertices.iter().map(|v| v.this())
+        self.vertices.iter().map(Vertex::this)
     }
 
     /// Creates and registers a new vertex.
@@ -344,8 +344,8 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
     /// Returns an Iterator over all full vertices in `self`.  This does not resolve forwards, thus every representative only occurs once.
     fn reprs(&self) -> impl Iterator<Item = &FullVertex<T>> {
         self.vertices.iter().filter_map(|v| match v {
-            Vertex::Fwd { .. } => None,
             Vertex::Repr(fv) => Some(fv),
+            Vertex::Fwd { .. } => None,
         })
     }
 
@@ -358,8 +358,9 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
 
     /// Adds `entry` to `v` until it has length `size`.
     fn fill_with<X: Clone>(v: &mut Vec<X>, entry: X, size: usize) {
-        let diff = size.saturating_sub(v.len());
-        v.extend(vec![entry; diff]);
+        if v.len() < size {
+            v.resize(size, entry);
+        }
     }
 }
 
@@ -416,8 +417,8 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
                 self.repr_mut(key).ty = new_type;
 
                 equates
-                    .into_iter().
-                    try_for_each(|(k1, k2)| self.equate(k1, k2, context))?;
+                    .into_iter()
+                    .try_for_each(|(k1, k2)| self.equate(k1, k2, context))?;
 
                 Ok(change)
             })
