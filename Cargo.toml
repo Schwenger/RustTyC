@@ -12,3 +12,6 @@ categories = ["parsing"]
 
 [[example]]
 name = "parametrized_function"
+
+[dependencies]
+serde = { version = "1.0", optional = true }

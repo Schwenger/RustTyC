@@ -5,6 +5,9 @@
 
 use std::hash::Hash;
 
+#[cfg(feature = "serde")]
+use serde::{Serialize, Serializer, Deserialize, Deserializer, ser::SerializeStruct};
+
 /// Represents a constraint on one or several [TcKey]s and/or types.
 ///
 /// Rather than creating these constraints directly, [TcKey] provides several convenient functions for this
@@ -231,5 +234,117 @@ impl TcKey {
     /// This binds `self` to all of these keys symmetrically.
     pub fn is_sym_meet_of_all<V>(self, elems: &[Self]) -> Constraint<V> {
         Constraint::Conjunction(elems.iter().map(|&e| self.equate_with(e)).collect())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for TcKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer
+    {
+        let mut state = serializer.serialize_struct("TcKey", 1)?;
+        state.serialize_field("index", &self.ix)?;
+        state.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for TcKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>
+    {
+        use core::fmt::{Formatter, Result as FmtResult};
+        use serde::de::{Visitor, SeqAccess, MapAccess, IgnoredAny, Error as DeError};
+
+        enum TcKeyField {
+            Index,
+            Ignore,
+        }
+
+        impl<'a> Deserialize<'a> for TcKeyField {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'a>
+            {
+                deserializer.deserialize_identifier(TcKeyFieldVisitor)
+            }
+        }
+
+        struct TcKeyFieldVisitor;
+
+        impl<'a> Visitor<'a> for TcKeyFieldVisitor {
+            type Value = TcKeyField;
+
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> FmtResult {
+                formatter.write_str("`index` or ignored fields")
+            }
+
+            fn visit_str<E: DeError>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(match value {
+                    "index" => TcKeyField::Index,
+                    _ => TcKeyField::Ignore,
+                })
+            }
+
+            fn visit_bytes<E: DeError>(self, value: &[u8]) -> Result<Self::Value, E> {
+                Ok(match value {
+                    b"index" => TcKeyField::Index,
+                    _ => TcKeyField::Ignore,
+                })
+            }
+
+            fn visit_u64<E: DeError>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(match value {
+                    0 => TcKeyField::Index,
+                    _ => TcKeyField::Ignore,
+                })
+            }
+        }
+
+        struct TcKeyVisitor;
+
+        impl<'a> Visitor<'a> for TcKeyVisitor {
+            type Value = TcKey;
+
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> FmtResult {
+                formatter.write_str("struct `TcKey`")
+            }
+
+            fn visit_map<A: MapAccess<'a>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut index = None;
+
+                while let Some(field) = map.next_key::<TcKeyField>()? {
+                    match field {
+                        TcKeyField::Index => {
+                            let value: usize = map.next_value()?;
+                            if index.replace(value).is_some() {
+                                return Err(DeError::duplicate_field("index"));
+                            }
+                        }
+                        TcKeyField::Ignore => {
+                            let _: IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+
+                if let Some(index) = index {
+                    Ok(TcKey { ix: index })
+                } else  {
+                    Err(DeError::missing_field("index"))
+                }
+            }
+
+            fn visit_seq<A: SeqAccess<'a>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                if let Some(index) = seq.next_element()? {
+                    Ok(TcKey { ix: index })
+                } else {
+                    Err(DeError::invalid_length(0, &"struct `TcKey` with 1 field"))
+                }
+            }
+        }
+
+        deserializer.deserialize_struct("TcKey", &["index"], TcKeyVisitor)
     }
 }
