@@ -422,7 +422,7 @@ impl<T: ContextSensitiveVariant> ConstraintGraph<T> {
 
                 Ok(change)
             })
-            .try_fold(false, |acc, chg| Ok(acc || chg?))
+            .try_fold(false, |acc, chg| Ok(acc | chg?))
     }
 
     #[must_use]
