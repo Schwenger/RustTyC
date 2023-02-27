@@ -42,7 +42,7 @@
 //!     fn top() -> Self { MyVariant::Top }
 //!     fn meet(lhs: Partial<Self>, rhs: Partial<Self>) -> Result<Partial<Self>, Self::Err> {
 //!         assert_eq!(lhs.least_arity, 0);
-//!         assert_eq!(lhs.least_arity, 0);
+//!         assert_eq!(rhs.least_arity, 0);
 //!         let variant = match (lhs.variant, rhs.variant) {
 //!             (MyVariant::Top, x) | (x, MyVariant::Top) => Ok(x),
 //!             (MyVariant::Boolean, MyVariant::Boolean) => Ok(MyVariant::Boolean),
